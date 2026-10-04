@@ -102,6 +102,13 @@ function renderDMs() {
     row.append(button, remove); return row;
   }));
 }
+// The public-room notice stays dismissed on this browser once closed.
+let publicNoteDismissed = false;
+try { publicNoteDismissed = localStorage.getItem('silenza-public-note') === 'dismissed'; } catch {}
+$('#dismiss-public-note').onclick = () => {
+  publicNoteDismissed = true; $('#public-note').hidden = true; $('#message').focus();
+  try { localStorage.setItem('silenza-public-note', 'dismissed'); } catch {}
+};
 function updateHeading() {
   const privateChat = Boolean(current?.peer), groupChat = Boolean(current?.group), room = groupChat ? groupState || groupRooms.find(g => g.id === current.group) : rooms.find(r => r.id === current?.room);
   $('.app').classList.toggle('group-chat', groupChat);
@@ -117,7 +124,7 @@ function updateHeading() {
   $('#announcement-note').textContent = me.admin ? 'Only admins can post here. Announcements are saved until an admin removes them.' : 'Read-only: admins post updates here. Announcements are saved between restarts.';
   $('#room-badge').textContent = room?.adminOnly ? 'ANNOUNCEMENTS' : groupChat ? 'ENCRYPTED ROOM' : privateChat ? 'PRIVATE CHAT' : 'OPEN ROOM';
   $('#private-note').hidden = !privateChat && !groupChat;
-  $('#public-note').hidden = privateChat || groupChat || !room || room.adminOnly;
+  $('#public-note').hidden = publicNoteDismissed || privateChat || groupChat || !room || room.adminOnly;
   $('#block-private-user').hidden = !privateChat;
   $('#group-details').hidden = !groupChat;
   $('#group-details').disabled = !groupState;

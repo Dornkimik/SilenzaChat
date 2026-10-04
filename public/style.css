@@ -521,8 +521,12 @@ dialog input, #emoji-search { border-radius: 7px; background: var(--side); }
   .person-row .person { width: auto; min-width: 0; }
 }
 #delete-account-form .danger { margin-top: 10px; }
-.public-note { margin: 0 0 10px; padding: 8px 12px; border-left: 3px solid var(--danger); border-radius: 4px; background: var(--danger-soft); color: var(--text); font-size: 12px; line-height: 1.6; }
-.public-note strong { color: var(--danger); }
+.public-note { margin: 0 0 10px; padding: 8px 12px; border-left: 3px solid var(--accent); border-radius: 4px; background: var(--accent-soft); color: var(--muted); font-size: 12px; line-height: 1.6; }
+.public-note { display: flex; align-items: flex-start; gap: 8px; }
+.public-note p { flex: 1; margin: 0; }
+.public-note strong { color: var(--text); font-weight: 600; }
+#dismiss-public-note { flex-shrink: 0; padding: 0 4px; border: 0; background: transparent; color: var(--muted); font-size: 16px; line-height: 1.2; cursor: pointer; }
+#dismiss-public-note:hover, #dismiss-public-note:focus-visible { color: var(--text); }
 .settings-subheading { margin: 20px 0 4px; font-size: 14px; }
 .nav-room .unread, .dm-room .unread { margin-left: auto; flex-shrink: 0; }
 .nav-room .unread + .count { margin-left: 0; }
