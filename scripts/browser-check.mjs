@@ -158,7 +158,7 @@ try {
   await b.locator('.send-button').click();
   const downloadButton = a.getByRole('button',{name:'Download notes.txt',exact:true}); await downloadButton.waitFor();
   const [download] = await Promise.all([a.waitForEvent('download'), downloadButton.click()]);
-  assert.equal(download.suggestedFilename(),'notes.txt');
+  assert.match(download.suggestedFilename(),/^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}\.txt$/);
   assert.equal(await readFile(await download.path(),'utf8'),'private notes body');
   for (const secret of ['holiday-photo','recording.webm','notes.txt','private notes body']) assert.ok(!JSON.stringify(sent).includes(secret));
   // Senders can delete their own images; recipients cannot. Replies and active previews are cleared.

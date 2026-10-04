@@ -49,14 +49,15 @@ export async function auditAttachments(page) {
       for (const sample of snapshots) assert.equal(Buffer.from(sample.plain, 'base64').includes(Buffer.from(value)), false, `Encrypted attachment still contained "${value}".`);
     },
     async assertFailsClosed(original) {
-      await page.locator('#file-input').setInputFiles({ name: 'failure-probe.png', mimeType: 'image/png', buffer: original });
-      await page.locator('#attachment-preview').waitFor({ state: 'visible' });
+      // Attachments start encrypting in the background as soon as they are attached, so break the encryptor first.
       await page.evaluate(() => {
         window.__auditSavedEncryptAttachment = SilenzaCrypto.encryptAttachment;
         SilenzaCrypto.encryptAttachment = () => { throw new Error('Audit: attachment encryption failed'); };
       });
       const before = uploads.length;
       try {
+        await page.locator('#file-input').setInputFiles({ name: 'failure-probe.png', mimeType: 'image/png', buffer: original });
+        await page.locator('#attachment-preview').waitFor({ state: 'visible' });
         await page.locator('#message').fill('encryption failure must not leak this');
         await page.locator('.send-button').click();
         await page.waitForFunction(() => document.querySelector('#error').textContent === 'Audit: attachment encryption failed');

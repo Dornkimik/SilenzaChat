@@ -457,13 +457,14 @@ function revokeFile(id) {
   fileLoads.get(id)?.controller.abort(); fileLoads.delete(id);
   const player = filePlayers.get(id)?.querySelector('video, audio');
   if (player) { player.pause(); player.removeAttribute('src'); player.load(); }
-  filePlayers.delete(id);
+  filePlayers.delete(id); downloadProgress.delete(id);
 }
 function clearFileURLs() { for (const id of new Set([...fileURLs.keys(), ...fileLoads.keys(), ...filePlayers.keys()])) revokeFile(id); }
 function clearPendingFile() {
   fileRevision++; filePreparing = false;
   if (pendingFile?.url) URL.revokeObjectURL(pendingFile.url);
-  pendingFile = null; $('#attachment-preview').hidden = true; $('#attachment-preview .attachment-thumb').replaceWith(element('span', 'attachment-thumb'));
+  discardUpload(pendingFile?.upload);
+  pendingFile = null; $('#attachment-preview').hidden = true; $('#attachment-progress').hidden = true; $('#attachment-preview .attachment-thumb').replaceWith(element('span', 'attachment-thumb'));
   $('#file-input').value = ''; $('#message').required = true;
 }
 $('#attach-file').onclick = () => $('#file-input').click();
@@ -485,14 +486,54 @@ $('#file-input').onchange = async () => {
       ? `${pendingFile.name} · ${formatBytes(pendingFile.size)} · Encrypted before upload. Sent as-is: details stored inside the file are not removed.`
       : `${fileKinds[pendingFile.kind]} · ${formatBytes(pendingFile.size)} · Metadata removed and encrypted before upload · expires within 24 hours`;
     $('#attachment-preview').hidden = false;
+    preuploadPendingFile(pendingFile);
   } catch(e) { if (version === fileRevision) error(e.tooLarge ? `${e.message} Attachments can be up to ${formatBytes(attachmentLimit - 16)}.` : e.message); }
   finally { if (version === fileRevision) { filePreparing = false; status(''); updateComposerState(); } }
 };
+// Download progress per message id, so a redrawn message row picks up a download already under way.
+// Small attachments finish too quickly for a bar to help, so it only appears from 1 MB.
+const downloadProgress = new Map(), PROGRESS_FROM = 1048576;
+function renderDownloadProgress(id, box = document.querySelector(`#message-${CSS.escape(id)} .attachment-progress`)) {
+  if (!box) return;
+  const state = downloadProgress.get(id), bar = box.querySelector('progress'), label = box.querySelector('span');
+  box.hidden = !state || state.total < PROGRESS_FROM;
+  if (box.hidden) return;
+  if (state.decrypting) { bar.value = 1; label.textContent = 'Decrypting…'; return; }
+  bar.value = state.loaded / state.total;
+  label.textContent = `Downloading encrypted file · ${Math.floor(bar.value * 100)}% · ${formatBytes(state.loaded)} of ${formatBytes(state.total)}`;
+}
+function downloadProgressBox(id) {
+  const box = element('div', 'attachment-progress'); box.setAttribute('role', 'status');
+  const bar = element('progress', ''); bar.max = 1; bar.value = 0; bar.setAttribute('aria-label', 'Attachment download progress');
+  box.append(bar, element('span', '')); renderDownloadProgress(id, box); return box;
+}
+// The ciphertext length is known from the encrypted message, so the stream is read into a buffer of
+// exactly that size; anything longer is rejected before decryption.
+async function readCiphertext(response, message) {
+  const id = message.id, total = SilenzaCrypto.paddedSize(message.file.size) + 16;
+  if (!response.body?.getReader) return new Uint8Array(await response.arrayBuffer());
+  const bytes = new Uint8Array(total), reader = response.body.getReader();
+  let loaded = 0, painted = 0;
+  downloadProgress.set(id, { loaded, total }); renderDownloadProgress(id);
+  try {
+    while (true) {
+      const { done, value } = await reader.read(); if (done) break;
+      if (loaded + value.length > total) { reader.cancel().catch(() => {}); throw new Error('Invalid encrypted attachment size.'); }
+      bytes.set(value, loaded); loaded += value.length;
+      if (loaded - painted >= 65536 || loaded === total) { painted = loaded; downloadProgress.set(id, { loaded, total }); renderDownloadProgress(id); }
+    }
+    downloadProgress.set(id, { loaded, total, decrypting: true }); renderDownloadProgress(id);
+    await new Promise(resolve => setTimeout(resolve)); // paint "Decrypting…" before the decryptor runs
+    return loaded === total ? bytes : bytes.subarray(0, loaded);
+  } catch (e) { downloadProgress.delete(id); renderDownloadProgress(id); throw e; }
+}
 async function fetchAttachment(message, signal) {
   const file = message.file, label = fileKinds[file.kind], version = revision;
   const response = await fetch(`/api/attachments/${encodeURIComponent(file.id)}`, { signal, cache: 'no-store' });
   if (!response.ok) throw new Error(`${label} expired or unavailable.`);
-  const plain = SilenzaCrypto.decryptAttachment(new Uint8Array(await response.arrayBuffer()), file);
+  let plain;
+  try { plain = SilenzaCrypto.decryptAttachment(await readCiphertext(response, message), file); }
+  finally { downloadProgress.delete(message.id); renderDownloadProgress(message.id); }
   // Only allow-listed formats whose bytes match the encrypted type are shown, never SVG/HTML or a server-provided MIME type.
   if (!SilenzaAttachments.matches(plain, file.type) || (file.kind === 'image' && !SilenzaAttachments.displayable(plain, file.type))) throw new Error(`Invalid private ${label.toLowerCase()}.`);
   if (version !== revision || signal?.aborted || !messages.some(m => m.id === message.id) || message.attachment.expiresAt <= Date.now()) throw new Error(`${label} no longer available.`);
@@ -542,6 +583,7 @@ function renderAttachment(message, content) {
   const file = message.file, label = fileKinds[file.kind], note = element('p', 'attachment-note'); content.append(note);
   if (message.fileExpired || message.attachment.expiresAt <= Date.now()) { note.textContent = `${label} expired`; return; }
   note.textContent = `Encrypted ${label.toLowerCase()} · ${formatBytes(file.size)} · expires ${new Date(message.attachment.expiresAt).toLocaleString()}`;
+  content.append(downloadProgressBox(message.id));
   if (file.kind === 'image') {
     const img = element('img', 'private-image'); img.alt = 'Private image'; img.width = file.width; img.height = file.height;
     const save = element('a', 'attachment-save', 'Save photo'); save.hidden = true;
@@ -565,14 +607,77 @@ function renderAttachment(message, content) {
   };
   content.append(button);
 }
-async function uploadEncryptedFile(file, target) {
-  status('Encrypting attachment…');
-  const encrypted = SilenzaCrypto.encryptAttachment(file.bytes);
-  status('Uploading encrypted attachment…');
-  const response = await fetch(`/api/attachments?${new URLSearchParams(target)}`, { method: 'POST', headers: { 'Content-Type': 'application/octet-stream' }, body: encrypted.bytes });
-  const result = await response.json().catch(() => ({})); if (!response.ok) throw new Error(result.error || 'Could not upload attachment.');
-  return { id: result.id, key: encrypted.key, nonce: encrypted.nonce, kind: file.kind, type: file.type, size: file.size,
-    ...(file.width ? { width: file.width, height: file.height } : {}), ...(file.kind === 'file' ? { name: file.name } : {}) };
+// An attachment is encrypted and uploaded in the background as soon as it is attached, so pressing
+// send usually only has to post the message. The encryption itself is unchanged: a fresh key and
+// nonce per upload, and only ciphertext leaves the browser. Unsent uploads are deleted on cancel
+// and expire on the server after 10 minutes anyway.
+const UNSENT_UPLOAD_MS = 9 * 60000;
+const nextFrame = () => new Promise(resolve => requestAnimationFrame(() => setTimeout(resolve)));
+function showUploadProgress(job) {
+  if (pendingFile?.upload !== job) return;
+  const box = $('#attachment-progress'), bar = box.querySelector('progress'), label = box.querySelector('span');
+  box.hidden = false;
+  if (job.phase === 'encrypting') { bar.removeAttribute('value'); label.textContent = 'Encrypting…'; }
+  else if (job.phase === 'uploading') {
+    bar.value = job.total ? job.loaded / job.total : 0;
+    label.textContent = `Uploading encrypted file · ${Math.floor(bar.value * 100)}% · ${formatBytes(job.loaded)} of ${formatBytes(job.total)}`;
+  } else if (job.phase === 'done') { bar.value = 1; label.textContent = 'Encrypted and uploaded · ready to send'; }
+  else { box.hidden = true; }
+}
+function uploadEncryptedFile(file, target) {
+  const job = { key: JSON.stringify(target), phase: 'encrypting', loaded: 0, total: 0, xhr: null, id: null, cancelled: false, claimed: false, uploadedAt: 0 };
+  const cancelled = () => Object.assign(new Error('Upload cancelled.'), { cancelled: true });
+  job.promise = (async () => {
+    showUploadProgress(job);
+    await nextFrame(); // let the progress bar paint before the encryptor blocks the page briefly
+    if (job.cancelled) throw cancelled();
+    const encrypted = SilenzaCrypto.encryptAttachment(file.bytes);
+    job.phase = 'uploading'; job.total = encrypted.bytes.length; showUploadProgress(job);
+    const result = await new Promise((resolve, reject) => {
+      if (job.cancelled) { reject(cancelled()); return; }
+      // XMLHttpRequest, because fetch cannot report upload progress.
+      const xhr = new XMLHttpRequest(); job.xhr = xhr;
+      xhr.open('POST', `/api/attachments?${new URLSearchParams(target)}`);
+      xhr.setRequestHeader('Content-Type', 'application/octet-stream');
+      xhr.upload.onprogress = event => { job.loaded = event.loaded; showUploadProgress(job); };
+      xhr.onload = () => {
+        let body = {}; try { body = JSON.parse(xhr.responseText); } catch {}
+        if (xhr.status >= 200 && xhr.status < 300 && typeof body.id === 'string') resolve(body);
+        else reject(Object.assign(new Error(body.error || 'Could not upload attachment.'), { status: xhr.status }));
+      };
+      xhr.onerror = () => reject(new Error('Could not upload attachment. Check your connection and try again.'));
+      xhr.onabort = () => reject(cancelled());
+      xhr.send(encrypted.bytes);
+    });
+    job.id = result.id; job.uploadedAt = Date.now();
+    if (job.cancelled) { discardUpload(job); throw cancelled(); }
+    job.phase = 'done'; showUploadProgress(job);
+    return { id: result.id, key: encrypted.key, nonce: encrypted.nonce, kind: file.kind, type: file.type, size: file.size,
+      ...(file.width ? { width: file.width, height: file.height } : {}), ...(file.kind === 'file' ? { name: file.name } : {}) };
+  })();
+  job.promise.catch(() => { if (pendingFile?.upload === job && !job.cancelled) { job.phase = 'failed'; showUploadProgress(job); } });
+  return job;
+}
+function discardUpload(job) {
+  if (!job || job.claimed) return;
+  job.cancelled = true; job.xhr?.abort();
+  if (job.id) { fetch(`/api/attachments/${encodeURIComponent(job.id)}`, { method: 'DELETE' }).catch(() => {}); job.id = null; }
+}
+// Starts the background upload for the attachment in the current conversation, when it is ready for one.
+function preuploadPendingFile(file) {
+  if (current?.peer && encryptionClient) file.upload = uploadEncryptedFile(file, { peer: current.peer });
+  else if (current?.group && encryptionClient && groupState?.id === current.group && groupState.joined) file.upload = uploadEncryptedFile(file, { group: groupState.id, version: groupState.version });
+}
+// Uses the background upload when it went to the same place and is still fresh; otherwise uploads again.
+// A claimed upload belongs to one send attempt; if that attempt fails, the send code deletes it.
+async function attachmentFor(file, target) {
+  const job = file.upload;
+  if (job && !job.claimed && job.key === JSON.stringify(target) && !job.cancelled && (!job.uploadedAt || Date.now() - job.uploadedAt < UNSENT_UPLOAD_MS)) {
+    try { const result = await job.promise; if (Date.now() - job.uploadedAt < UNSENT_UPLOAD_MS) { job.claimed = true; return result; } } catch (e) { if (e.cancelled) throw e; }
+  }
+  discardUpload(job);
+  file.upload = uploadEncryptedFile(file, target);
+  const result = await file.upload.promise; file.upload.claimed = true; return result;
 }
 async function showVerification(id) {
   if (!id || !encryptionClient) return;
@@ -641,7 +746,7 @@ $('#composer').onsubmit = async event => {
       for (let attempt = 1; ; attempt++) {
         state ||= await api(`groups/state?group=${encodeURIComponent(target.group)}`);
         try {
-          const file = pending ? await uploadEncryptedFile(pending, { group: state.id, version: state.version }) : null;
+          const file = pending ? await attachmentFor(pending, { group: state.id, version: state.version }) : null;
           uploadId = file?.id;
           const envelopes = await encryptionClient.encryptGroup({ id, group: state.id, version: state.version, sender: me.id,
             text: text.startsWith('//') ? text.slice(1) : text, replyTo: reply?.id || null, file, shareable: Boolean(state.shareHistory) }, state.members);
@@ -658,7 +763,7 @@ $('#composer').onsubmit = async event => {
     } else if (target.peer) {
       if (!encryptionClient) throw new Error(encryptionError || 'Private encryption is unavailable.');
       const person = await encryptionClient.peer(target.peer);
-      const file = pending ? await uploadEncryptedFile(pending, { peer: target.peer }) : null;
+      const file = pending ? await attachmentFor(pending, { peer: target.peer }) : null;
       uploadId = file?.id;
       const id = crypto.randomUUID();
       const encrypted = encryptionClient.encrypt({ id, sender: me.id, recipient: target.peer, text: text.startsWith('//') ? text.slice(1) : text, replyTo: reply?.id || null, file }, person);
