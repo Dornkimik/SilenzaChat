@@ -79,7 +79,7 @@ function renderGroups() {
   $('#groups').replaceChildren(...groupRooms.map(group => {
     const button = element('button', `nav-room group-room${current?.group === group.id ? ' active' : ''}`);
     const count = group.invited ? 'Invited' : group.joined ? 'Joined' : group.locked ? 'Locked' : `${group.count}/${group.limit || 20}`;
-    button.append(element('span', 'hash', group.access === 'invite' ? '◇' : '#'), element('span', 'name', group.name), element('small', 'count', count));
+    button.append(element('span', 'hash', group.access === 'invite' ? '◇' : '#'), element('span', 'name', group.name)); appendUnread(button, `group:${group.id}`); button.append(element('small', 'count', count));
     button.disabled = group.blocked;
     button.title = group.blocked ? 'You were banned from this room' : group.description;
     button.onclick = () => group.joined ? select({ group: group.id }) : openGroup(group);

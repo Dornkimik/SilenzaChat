@@ -31,7 +31,7 @@ function renderRooms() {
   const roomButton = room => {
     const button = element('button', `nav-room${current?.room === room.id ? ' active' : ''}`);
     const label = element('span', 'room-label'); label.append(element('span', 'name', room.name), element('small', 'room-preview', room.preview || room.description || 'No messages yet'));
-    button.append(element('span', 'hash', '#'), label, element('span', 'count', room.count || 0));
+    button.append(element('span', 'hash', '#'), label); appendUnread(button, `room:${room.id}`); button.append(element('span', 'count', room.count || 0));
     button.setAttribute('aria-current', current?.room === room.id ? 'true' : 'false');
     button.onclick = () => select({ room: room.id }); return button;
   };
@@ -50,7 +50,7 @@ async function changeBlock(person, blocked) {
 }
 function applyPrivatePreferences(prefs) {
   blockedUsers = prefs.blocks || []; hiddenChats = new Set(prefs.hiddenChats || []);
-  for (const id of conversations.keys()) if (hiddenChats.has(id) || isBlocked(id)) { conversations.delete(id); unread.delete(id); drafts.delete(`peer:${id}`); }
+  for (const id of conversations.keys()) if (hiddenChats.has(id) || isBlocked(id)) { conversations.delete(id); unread.delete(`peer:${id}`); drafts.delete(`peer:${id}`); }
   if (current?.peer && (hiddenChats.has(current.peer) || isBlocked(current.peer))) select(rooms[0] ? { room: rooms[0].id } : null);
   renderPeople(); renderDMs(); renderBlockedUsers();
 }
@@ -66,7 +66,7 @@ function renderBlockedUsers() {
 async function removePrivateChat(id) {
   try {
     await api('private/hide', { peer: id }); hiddenChats.add(id);
-    conversations.delete(id); unread.delete(id); drafts.delete(`peer:${id}`);
+    conversations.delete(id); unread.delete(`peer:${id}`); drafts.delete(`peer:${id}`); updateUnreadTitle();
     if (current?.peer === id) await select(rooms[0] ? { room: rooms[0].id } : null);
     renderDMs();
   } catch (e) { error(e.message); }
@@ -93,7 +93,7 @@ function renderDMs() {
     const row = element('div', 'dm-row');
     const button = element('button', `dm-room${current?.peer === id ? ' active' : ''}`);
     button.append(element('span', '', '↗'), username(alias, 'name', people.find(p => p.id === id)?.displayAsAdmin));
-    if (unread.get(id)) button.append(element('span', 'unread', unread.get(id)));
+    appendUnread(button, `peer:${id}`);
     button.onclick = () => select({ peer: id });
     const remove = element('button', 'dm-remove', '×'); remove.type = 'button';
     remove.setAttribute('aria-label', `Remove private chat with ${alias}`);
@@ -117,6 +117,7 @@ function updateHeading() {
   $('#announcement-note').textContent = me.admin ? 'Only admins can post here. Announcements are saved until an admin removes them.' : 'Read-only: admins post updates here. Announcements are saved between restarts.';
   $('#room-badge').textContent = room?.adminOnly ? 'ANNOUNCEMENTS' : groupChat ? 'ENCRYPTED ROOM' : privateChat ? 'PRIVATE CHAT' : 'OPEN ROOM';
   $('#private-note').hidden = !privateChat && !groupChat;
+  $('#public-note').hidden = privateChat || groupChat || !room || room.adminOnly;
   $('#block-private-user').hidden = !privateChat;
   $('#group-details').hidden = !groupChat;
   $('#group-details').disabled = !groupState;
@@ -145,7 +146,7 @@ async function select(target) {
   clearFileURLs(); peerIdentity = null; groupState = null;
   current = target; const version = ++revision; messages = []; error();
   $('#room-rules').open = false;
-  if (target?.peer) unread.delete(target.peer);
+  unread.delete(conversationKey(target)); updateUnreadTitle();
   renderRooms(); renderDMs(); updateHeading(); renderMessages();
   if (!target) return;
   try {
@@ -329,9 +330,9 @@ async function receive(message) {
   if (!message.room && !message.group) {
     const peer = message.sender === me.id ? message.recipient : message.sender;
     if (!conversations.has(peer)) conversations.set(peer, people.find(p => p.id === peer)?.alias || message.alias);
-    if (current?.peer !== peer && message.sender !== me.id) unread.set(peer, (unread.get(peer) || 0) + 1);
     renderDMs();
   }
+  countUnread(message);
   if (matches(message) && !messages.some(m => m.id === message.id)) {
     const version = revision;
     const needsAuthentication = !message.room;
@@ -443,7 +444,7 @@ async function decodePrivate(message) {
 const formatBytes = bytes => bytes < 1048576 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / 1048576).toFixed(1)} MB`;
 // QuickTime files are ISO media; browsers that play them expect the MP4 type.
 const mediaType = type => type === 'video/quicktime' ? 'video/mp4' : type;
-const extensions = { 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/webm': 'webm', 'audio/wav': 'wav' };
+const extensions = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/gif': 'gif', 'image/webp': 'webp', 'video/mp4': 'mp4', 'video/quicktime': 'mov', 'video/webm': 'webm', 'audio/mpeg': 'mp3', 'audio/mp4': 'm4a', 'audio/webm': 'webm', 'audio/wav': 'wav' };
 function revokeFile(id) {
   if (fileURLs.has(id)) URL.revokeObjectURL(fileURLs.get(id)); fileURLs.delete(id);
   fileLoads.get(id)?.controller.abort(); fileLoads.delete(id);
@@ -505,13 +506,20 @@ function loadMedia(message) {
   }
   return fileLoads.get(id).promise;
 }
+// Saved attachments are named after the message's date and time, e.g. 2026-10-04_14-05-09.jpg, instead of the sender's filename.
+function attachmentName(message) {
+  const date = new Date(Number.isNaN(Date.parse(message.time)) ? Date.now() : message.time), pad = n => String(n).padStart(2, '0');
+  const stamp = `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}_${pad(date.getHours())}-${pad(date.getMinutes())}-${pad(date.getSeconds())}`;
+  const extension = extensions[message.file.type] || /\.([a-z0-9]{1,10})$/i.exec(message.file.name || '')?.[1]?.toLowerCase();
+  return extension ? `${stamp}.${extension}` : stamp;
+}
 function mediaPlayer(message, url) {
   if (filePlayers.has(message.id)) return filePlayers.get(message.id);
   const file = message.file, wrapper = element('div', 'attachment-player'), media = element(file.kind === 'video' ? 'video' : 'audio', `private-${file.kind}`);
   media.controls = true; media.preload = 'metadata';
   if (file.kind === 'video') { media.playsInline = true; if (file.width) { media.width = file.width; media.height = file.height; } }
   media.onerror = () => { media.hidden = true; wrapper.prepend(element('p', 'attachment-note', `This browser cannot play this ${file.kind}. Save it to open it in another app.`)); };
-  const save = element('a', 'attachment-save', `Save ${file.kind}`); save.href = url; save.download = `silenza-${file.kind}.${extensions[file.type]}`;
+  const save = element('a', 'attachment-save', `Save ${file.kind}`); save.href = url; save.download = attachmentName(message);
   media.src = url; wrapper.append(media, save);
   filePlayers.set(message.id, wrapper); return wrapper;
 }
@@ -519,7 +527,7 @@ async function downloadFile(message) {
   const plain = await fetchAttachment(message);
   // Generic files are only ever saved, never opened as a page from this site.
   const url = URL.createObjectURL(new Blob([plain], { type: 'application/octet-stream' })), link = element('a', '');
-  link.href = url; link.download = message.file.name; link.hidden = true;
+  link.href = url; link.download = attachmentName(message); link.hidden = true;
   document.body.append(link); link.click(); link.remove();
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
@@ -529,9 +537,10 @@ function renderAttachment(message, content) {
   note.textContent = `Encrypted ${label.toLowerCase()} · ${formatBytes(file.size)} · expires ${new Date(message.attachment.expiresAt).toLocaleString()}`;
   if (file.kind === 'image') {
     const img = element('img', 'private-image'); img.alt = 'Private image'; img.width = file.width; img.height = file.height;
-    content.append(img);
+    const save = element('a', 'attachment-save', 'Save photo'); save.hidden = true;
+    content.append(img, save);
     const version = revision;
-    loadMedia(message).then(url => { if (version === revision) img.src = url; }).catch(e => { img.hidden = true; note.textContent = e.message; });
+    loadMedia(message).then(url => { if (version === revision) { img.src = url; save.href = url; save.download = attachmentName(message); save.hidden = false; } }).catch(e => { img.hidden = true; note.textContent = e.message; });
     return;
   }
   if (filePlayers.has(message.id)) { content.append(filePlayers.get(message.id)); return; }
@@ -899,7 +908,7 @@ function connect() {
   stream.addEventListener('group-state', event => groupStateChanged(JSON.parse(event.data)));
   stream.addEventListener('history-shared', event => { const { group } = JSON.parse(event.data); if (current?.group === group) loadSharedHistory(group); });
   stream.addEventListener('group-removed', event => {
-    const removed = JSON.parse(event.data); drafts.delete(`group:${removed.group}`);
+    const removed = JSON.parse(event.data); drafts.delete(`group:${removed.group}`); unread.delete(`group:${removed.group}`); updateUnreadTitle();
     if (current?.group === removed.group) closeCurrentGroup(removed.reason);
     if (groupPanel?.id === removed.group) { $('#group-dialog').close(); groupPanel = null; }
     refreshGroups();
@@ -970,8 +979,9 @@ async function playSound() {
   oscillator.connect(volume); volume.connect(audioContext.destination); oscillator.start(now); oscillator.stop(now + 0.25);
   oscillator.onended = () => { oscillator.disconnect(); volume.disconnect(); };
 }
+const messageKind = message => message.group ? 'groups' : message.room ? 'rooms' : 'private';
 function notifyMessage(message) {
-  const kind = message.group ? 'groups' : message.room ? 'rooms' : 'private';
+  const kind = messageKind(message);
   if (message.sender === me.id || !soundSettings[kind] || Date.now() - lastSound < 800) return;
   lastSound = Date.now();
   playSound().catch(e => { $('#sound-status').textContent = e.message; });
@@ -985,11 +995,41 @@ for (const key of Object.keys(soundSettings)) {
     if (input.checked) playSound().catch(e => { $('#sound-status').textContent = e.message; });
   };
 }
+// Visual notifications are unread badges in the sidebar plus a count in the tab title. Main rooms are busy, so they start off.
+let visualSettings = { private: true, groups: true, rooms: false };
+const baseTitle = document.title;
+try { const saved = JSON.parse(localStorage.getItem('silenza-visual')); for (const key of Object.keys(visualSettings)) if (typeof saved?.[key] === 'boolean') visualSettings[key] = saved[key]; } catch {}
+const kindPrefix = { private: 'peer:', groups: 'group:', rooms: 'room:' };
+function appendUnread(button, key) {
+  const count = unread.get(key); if (!count) return;
+  const badge = element('span', 'unread', count > 99 ? '99+' : count);
+  badge.setAttribute('aria-label', `${count} unread ${count === 1 ? 'message' : 'messages'}`); button.append(badge);
+}
+function updateUnreadTitle() {
+  let total = 0; for (const count of unread.values()) total += count;
+  document.title = total ? `(${total > 99 ? '99+' : total}) ${baseTitle}` : baseTitle;
+}
+function countUnread(message) {
+  const key = message.group ? `group:${message.group}` : message.room ? `room:${message.room}` : `peer:${message.sender}`;
+  if (message.sender === me.id || !visualSettings[messageKind(message)] || key === conversationKey(current)) return;
+  unread.set(key, (unread.get(key) || 0) + 1);
+  if (message.room || message.group) renderRooms(); else renderDMs();
+  updateUnreadTitle();
+}
+for (const key of Object.keys(visualSettings)) {
+  const input = $(`#visual-${key}`); input.checked = visualSettings[key];
+  input.onchange = () => {
+    visualSettings[key] = input.checked;
+    try { localStorage.setItem('silenza-visual', JSON.stringify(visualSettings)); } catch { $('#sound-status').textContent = 'This browser could not save your notification preferences.'; }
+    if (!input.checked) for (const id of [...unread.keys()]) if (id.startsWith(kindPrefix[key])) unread.delete(id);
+    renderRooms(); renderDMs(); updateUnreadTitle();
+  };
+}
 $('#test-sound').onclick = () => playSound().then(() => { $('#sound-status').textContent = 'Sound is enabled in this tab.'; }).catch(e => { $('#sound-status').textContent = e.message; });
 function clearSignedOutPage() {
   revision++; current = null; groupState = null;
   clearTimeout(reconnectTimer); stream?.close(); encryptionClient?.dispose(); encryptionClient = null; peerIdentity = null; verificationTarget = null;
-  messages = []; drafts.clear(); clearPendingFile(); clearFileURLs(); setReply(null);
+  messages = []; drafts.clear(); unread.clear(); updateUnreadTitle(); clearPendingFile(); clearFileURLs(); setReply(null);
   editingMessage = null; $('#edit-message-text').value = ''; $('#edit-message-dialog').close();
   $('#message').value = ''; renderMessages(); updateComposerState();
 }
