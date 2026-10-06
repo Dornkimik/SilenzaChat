@@ -26,9 +26,15 @@ const send = async (page, text) => {
   await page.locator('#message').fill(text); await page.locator('.send-button').click();
   await page.getByText(text, { exact: true }).waitFor({ timeout: 60000 });
 };
-const joinRoom = async page => {
+const askAndApprove = async (page, owner) => {
+  await page.locator('#group-join').click(); await page.locator('#group-join').filter({ hasText: 'Cancel join request' }).waitFor({ timeout: 60000 });
+  const id = await page.evaluate(() => me.id), group = await page.evaluate(() => groupPanel.id);
+  const result = await owner.evaluate(async ({ group, id }) => (await fetch('/api/groups/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ group, member: id }) })).status, { group, id });
+  if (result !== 200) throw new Error(`Approving the join request failed with ${result}`);
+};
+const joinRoom = async (page, owner) => {
   await page.locator('#groups .group-room').filter({ hasText: 'Slow lane' }).waitFor({ timeout: 60000 });
-  await page.locator('#groups .group-room').click(); await page.locator('#group-join').click();
+  await page.locator('#groups .group-room').click(); await askAndApprove(page, owner);
   await page.waitForFunction(() => !document.querySelector('#message').disabled && document.querySelector('#room-title').textContent === 'Slow lane', null, { timeout: 60000 });
 };
 try {
@@ -44,12 +50,12 @@ try {
 
   await a.locator('#create-group').click(); await a.locator('#group-name').fill('Slow lane'); await a.locator('#group-save').click();
   await a.waitForFunction(() => document.querySelector('#room-title').textContent === 'Slow lane' && !document.querySelector('#message').disabled, null, { timeout: 60000 });
-  await Promise.all([joinRoom(b), joinRoom(c)]);
+  await Promise.all([joinRoom(b, a), joinRoom(c, a)]);
 
   // Three members send at the same time while a fourth person joins, which changes the membership
   // mid-send. Sends must be retried for the new member list instead of failing.
   const burst = page => (async () => { for (let i = 1; i <= 3; i++) await send(page, `${page === a ? 'A' : page === b ? 'B' : 'C'} message ${i}`); })();
-  await Promise.all([burst(a), burst(b), burst(c), joinRoom(d)]);
+  await Promise.all([burst(a), burst(b), burst(c), joinRoom(d, a)]);
   for (const page of [a, b, c]) assert.equal(await page.locator('#error').textContent(), '', 'no send failed during the membership change');
   const expected = ['A', 'B', 'C'].flatMap(who => [1, 2, 3].map(i => `${who} message ${i}`));
   for (const page of [a, b, c]) await page.waitForFunction(list => list.every(text => [...document.querySelectorAll('#messages .message-text')].some(p => p.textContent === text)), expected, { timeout: 60000 });

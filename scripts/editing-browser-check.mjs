@@ -30,6 +30,12 @@ const editMessage = async (page, before, after) => {
   await page.locator('#edit-message-dialog').waitFor({ state: 'hidden' });
   await page.locator('#messages').getByText(after, { exact: true }).waitFor();
 };
+const askAndApprove = async (page, owner) => {
+  await page.locator('#group-join').click(); await page.locator('#group-join').filter({ hasText: 'Cancel join request' }).waitFor({ timeout: 60000 });
+  const id = await page.evaluate(() => me.id), group = await page.evaluate(() => groupPanel.id);
+  const result = await owner.evaluate(async ({ group, id }) => (await fetch('/api/groups/approve', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ group, member: id }) })).status, { group, id });
+  if (result !== 200) throw new Error(`Approving the join request failed with ${result}`);
+};
 try {
   await once(server.stdout, 'data');
   browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, headless: true });
@@ -66,10 +72,10 @@ try {
   // Sending and editing share the eight-actions-per-ten-seconds rate limit.
   await new Promise(resolve => setTimeout(resolve, 10050));
   await a.locator('#create-group').click(); await a.locator('#group-name').fill('Editing room'); await a.locator('#group-save').click();
-  await b.locator('#groups .group-room').click(); await b.locator('#group-join').click();
+  await b.locator('#groups .group-room').click(); await askAndApprove(b, a);
   await a.waitForFunction(() => !document.querySelector('#message').disabled && document.querySelector('#room-title').textContent === 'Editing room');
   await send(a, 'Group before'); await b.locator('#messages').getByText('Group before', { exact: true }).waitFor();
-  await c.locator('#groups .group-room').click(); await c.locator('#group-join').click();
+  await c.locator('#groups .group-room').click(); await askAndApprove(c, a);
   await c.waitForFunction(() => document.querySelector('#room-title').textContent === 'Editing room');
   // A later member must not receive an edited historical message.
   await editMessage(a, 'Group before', 'Group edited sentinel');

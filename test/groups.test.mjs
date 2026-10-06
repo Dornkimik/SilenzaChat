@@ -17,18 +17,20 @@ function setup() {
   const store = new Groups({ isAdmin: u => u.role === 'admin', attachments, now: () => time, emit: (u, event, data) => events.push({ user: u.id, event, data }), broadcast: () => {},
     safeUser: u => ({ id: u.id, alias: u.alias, displayAsAdmin: false }), findUser: id => users.find(u => u.id === id) });
   const call = (u, action, input = {}, method = 'POST') => store.handle(method, action, u, input);
+  // Joining a discoverable room takes a request that the owner approves.
+  const join = (u, group) => { call(u, 'request', { group }); const room = store.get(group); return call(room.members.get(room.owner).user, 'approve', { group, member: u.id }); };
   const send = (u, group, text = 'secret group sentinel', replyTo) => {
     const state = call(u, 'state', { group }, 'GET'), id = randomUUID();
     const shareable = Boolean(state.shareHistory);
     return { group, id, version: state.version, replyTo, ...(shareable ? { shareable } : {}),
       envelopes: crypto.encryptGroupMessage({ id, group, version: state.version, sender: u.id, text, replyTo, shareable }, u.identity, state.members, u.signing) };
   };
-  return { store, attachments, users, events, call, send, advance: ms => { time += ms; } };
+  return { store, attachments, users, events, call, join, send, advance: ms => { time += ms; } };
 }
 
 test('group attachments authenticate descriptors, isolate memberships and clean up with messages and rooms', async () => {
-  const { store, attachments, users: [a,b,c], call, send, advance } = setup();
-  const group = call(a, 'create', { name: 'Images' }).id; call(b, 'join', { group });
+  const { store, attachments, users: [a,b,c], call, join, send, advance } = setup();
+  const group = call(a, 'create', { name: 'Images' }).id; join(b, group);
   const plain = new TextEncoder().encode('private group attachment bytes'), encrypted = crypto.encryptAttachment(plain);
   async function upload(room = group, peer = null) {
     const version = store.get(room).version;
@@ -51,7 +53,7 @@ test('group attachments authenticate descriptors, isolate memberships and clean 
   assert.throws(() => crypto.decryptGroupMessage({ ...received, attachment: { id: 'substituted' } }, b.id, b.identity, a.publicKey), /metadata/);
   assert.throws(() => crypto.decryptGroupMessage({ ...received, attachment: null }, b.id, b.identity, a.publicKey), /metadata/);
   assert.throws(() => attachments.get(first.id, c.id), /unavailable/);
-  call(c, 'join', { group }); assert.throws(() => store.checkAttachment(attachments.items.get(first.id), c), /unavailable/);
+  join(c, group); assert.throws(() => store.checkAttachment(attachments.items.get(first.id), c), /unavailable/);
   call(a, 'kick', { group, member: b.id }); assert.throws(() => store.checkAttachment(attachments.items.get(first.id), b), /unavailable/);
   call(a, 'message-delete', { group, id: message.id }); assert.equal(attachments.items.has(first.id), false);
   const otherRoom = call(a, 'create', { name: 'Other' }).id;
@@ -61,10 +63,10 @@ test('group attachments authenticate descriptors, isolate memberships and clean 
   assert.throws(() => call(a, 'message', payload(dm.id)), /Invalid attachment/);
   const pending = await upload();
   assert.throws(() => attachments.claim(pending.id, a.id, null, randomUUID()), /Invalid/);
-  call(c, 'leave', { group }); call(c, 'join', { group });
+  call(c, 'leave', { group }); join(c, group);
   assert.throws(() => call(a, 'message', payload(pending.id)), /membership changed/);
   const published = await upload(); const posted = call(a, 'message', payload(published.id));
-  call(c, 'leave', { group }); call(c, 'join', { group });
+  call(c, 'leave', { group }); join(c, group);
   assert.throws(() => store.checkAttachment(attachments.items.get(published.id), c), /unavailable/);
   // Evicting a message also removes its encrypted attachment bytes.
   for (let i = 0; i < 100; i++) { advance(10001); call(a, 'message', send(a, group)); }
@@ -76,7 +78,7 @@ test('group attachments authenticate descriptors, isolate memberships and clean 
   advance(86400000); assert.throws(() => attachments.get(expiring.id, a.id), /unavailable/);
 });
 test('temporary encrypted rooms enforce invitation, ownership, membership versions, counts and deletion', () => {
-  const { store, users: [a,b,c,d], events, call, send } = setup();
+  const { store, users: [a,b,c,d], events, call, join, send } = setup();
   const room = call(a, 'create', { name: 'Test room', description: 'Description', rules: 'Be kind', access: 'invite' });
   const group = room.id;
   assert.equal(room.owner, a.id); assert.equal(room.rules, 'Be kind');
@@ -117,7 +119,7 @@ test('temporary encrypted rooms enforce invitation, ownership, membership versio
   assert.equal(call(a, 'state', { group }, 'GET').members.find(m => m.id === a.id).messages, 2);
   call(a, 'update', { group, name: 'Open now', description: 'Changed', rules: 'New rules', access: 'open' });
   assert.equal(call(c, '', {}, 'GET')[0].name, 'Open now');
-  call(c, 'join', { group });
+  join(c, group);
   assert.deepEqual(call(c, 'history', { group }, 'GET'), []);
   assert.throws(() => call(a, 'leave', { group }), /Transfer/);
   const beforeKick = send(b, group);
@@ -139,8 +141,8 @@ test('temporary encrypted rooms enforce invitation, ownership, membership versio
 });
 
 test('group encryption binds sender, recipient, room, message, reply and membership version', () => {
-  const { users: [a,b,c], call, send } = setup();
-  const group = call(a, 'create', { name: 'Group' }).id; call(b, 'join', { group });
+  const { users: [a,b,c], call, join, send } = setup();
+  const group = call(a, 'create', { name: 'Group' }).id; join(b, group);
   const payload = send(a, group), message = call(a, 'message', payload);
   const received = { ...message, encrypted: payload.envelopes[b.id] };
   for (const change of [{ group: 'different' }, { id: 'different' }, { sender: b.id }, { version: 999 }, { reply: { id: 'fake' } }]) {
@@ -154,11 +156,11 @@ test('group encryption binds sender, recipient, room, message, reply and members
 });
 
 test('temporary rooms expire, clean up removed users, and enforce limits and complete recipient sets', () => {
-  const { store, users: [a,b,c], call, send, advance } = setup();
+  const { store, users: [a,b,c], call, join, send, advance } = setup();
   const group = call(a, 'create', { name: 'Temporary' }).id;
-  call(b, 'join', { group });
+  join(b, group);
   const earlier = call(a, 'message', send(a, group));
-  call(b, 'leave', { group }); call(b, 'join', { group });
+  call(b, 'leave', { group }); join(b, group);
   assert.deepEqual(call(b, 'history', { group }, 'GET'), []);
   assert.throws(() => call(b, 'message', send(b, group, 'quote prior membership', earlier.id)), /reply/);
   const missing = send(a, group); delete missing.envelopes[b.id];
@@ -180,7 +182,7 @@ test('temporary rooms expire, clean up removed users, and enforce limits and com
 
 
 test('admin room moderation preserves encryption boundaries and cleans up deleted rooms', async () => {
-  const { store, attachments, users: [owner, admin], call, send, events, advance } = setup();
+  const { store, attachments, users: [owner, admin], call, join, send, events, advance } = setup();
   const room = call(owner, 'create', { name: 'Private room', access: 'invite' });
   assert.throws(() => store.moderate('list', admin), /Unlock/);
   admin.role = 'admin';
@@ -214,9 +216,9 @@ test('admin room moderation preserves encryption boundaries and cleans up delete
 
 
 test('editing group messages preserves original audience, ownership, replies, counts and byte accounting', () => {
-  const { store, users: [a,b,c], events, call, send, advance } = setup();
+  const { store, users: [a,b,c], events, call, join, send, advance } = setup();
   const room = call(a, 'create', { name: 'Edit room' }), group = room.id;
-  call(b, 'join', { group });
+  join(b, group);
   const message = call(a, 'message', send(a, group, 'Before'));
   const edit = (text, editVersion = 1) => {
     const state = call(a, 'message-edit-state', { group, id: message.id }, 'GET');
@@ -225,7 +227,7 @@ test('editing group messages preserves original audience, ownership, replies, co
   };
   assert.throws(() => call(b, 'message-edit-state', { group, id: message.id }, 'GET'), /Your message/);
   assert.throws(() => call(b, 'message-edit', edit('Stolen')), /Your message/);
-  const stale = edit('Before join'); call(c, 'join', { group });
+  const stale = edit('Before join'); join(c, group);
   assert.throws(() => call(a, 'message-edit', stale), /Membership changed/);
   const valid = edit('After edit');
   assert.deepEqual(Object.keys(valid.envelopes).sort(), [a.id,b.id].sort());
@@ -251,9 +253,9 @@ test('editing group messages preserves original audience, ownership, replies, co
 });
 
 test('room moderators manage regular members only and inherit ownership before members', () => {
-  const { store, users: [a,b,c,d], call, send } = setup();
+  const { store, users: [a,b,c,d], call, join, send } = setup();
   const group = call(a, 'create', { name: 'Moderated' }).id;
-  for (const u of [b, c, d]) call(u, 'join', { group });
+  for (const u of [b, c, d]) join(u, group);
   assert.throws(() => call(b, 'promote', { group, member: c.id }), /owner/);
   call(a, 'promote', { group, member: b.id }); call(a, 'promote', { group, member: d.id });
   const state = call(c, 'state', { group }, 'GET');
@@ -279,10 +281,10 @@ test('room moderators manage regular members only and inherit ownership before m
 });
 
 test('kicks allow rejoining, bans block it until unbanned, and invite-only kicks drop the invitation', () => {
-  const { users: [a,b,c], call } = setup();
+  const { users: [a,b,c], call, join } = setup();
   const group = call(a, 'create', { name: 'Kick vs ban' }).id;
-  call(b, 'join', { group }); call(a, 'kick', { group, member: b.id });
-  call(b, 'join', { group });
+  join(b, group); call(a, 'kick', { group, member: b.id });
+  join(b, group);
   call(a, 'ban', { group, member: b.id });
   assert.equal(call(b, '', {}, 'GET')[0].blocked, true);
   assert.throws(() => call(b, 'join', { group }), /cannot rejoin/);
@@ -290,7 +292,7 @@ test('kicks allow rejoining, bans block it until unbanned, and invite-only kicks
   assert.deepEqual(call(a, 'state', { group }, 'GET').banned.map(x => x.alias), ['b']);
   call(a, 'unban', { group, member: b.id });
   assert.throws(() => call(a, 'unban', { group, member: b.id }), /not banned/);
-  call(b, 'join', { group });
+  join(b, group);
   const closed = call(a, 'create', { name: 'Closed', access: 'invite' }).id;
   call(a, 'invite', { group: closed, member: c.id }); call(c, 'join', { group: closed });
   call(a, 'kick', { group: closed, member: c.id });
@@ -298,9 +300,9 @@ test('kicks allow rejoining, bans block it until unbanned, and invite-only kicks
 });
 
 test('mutes, slow mode and staff-only posting are enforced by the server', () => {
-  const { users: [a,b,c], call, send, advance } = setup();
+  const { users: [a,b,c], call, join, send, advance } = setup();
   const group = call(a, 'create', { name: 'Quiet' }).id;
-  call(b, 'join', { group }); call(c, 'join', { group }); call(a, 'promote', { group, member: c.id });
+  join(b, group); join(c, group); call(a, 'promote', { group, member: c.id });
   const before = call(b, 'message', send(b, group, 'before mute'));
   assert.throws(() => call(a, 'mute', { group, member: b.id, minutes: 7 }), /listed/);
   call(a, 'mute', { group, member: b.id, minutes: 5 });
@@ -311,7 +313,7 @@ test('mutes, slow mode and staff-only posting are enforced by the server', () =>
     envelopes: crypto.encryptGroupMessage({ id: before.id, group, version: before.version, sender: b.id, text: 'edited', editVersion: 1 }, b.identity, editState.members) };
   assert.throws(() => call(b, 'message-edit', edit), /muted/);
   // Leaving and rejoining does not clear a mute.
-  call(b, 'leave', { group }); call(b, 'join', { group });
+  call(b, 'leave', { group }); join(b, group);
   assert.throws(() => call(b, 'message', send(b, group)), /muted/);
   advance(5 * 60000 + 1);
   call(b, 'message', send(b, group));
@@ -331,25 +333,60 @@ test('mutes, slow mode and staff-only posting are enforced by the server', () =>
   call(c, 'message', send(c, group));
 });
 
+test('discoverable rooms need an approved request; hidden rooms only invitations or links', () => {
+  const { store, users: [a,b,c,d], events, call } = setup();
+  const open = call(a, 'create', { name: 'Discoverable' }).id, hidden = call(a, 'create', { name: 'Hidden', access: 'invite' }).id;
+  assert.throws(() => call(b, 'join', { group: open }), /Ask to join/);
+  assert.throws(() => call(b, 'request', { group: hidden }), /invitation/);
+  assert.equal(call(b, 'request', { group: open }).requested, true);
+  assert.equal(call(b, 'request', { group: open }).requested, true);
+  assert.equal(call(a, '', {}, 'GET').find(g => g.id === open).requests, 1);
+  assert.equal(call(c, '', {}, 'GET').find(g => g.id === open).requests, undefined);
+  assert.throws(() => call(b, 'state', { group: open }, 'GET'), /Join/);
+  call(c, 'request', { group: open });
+  call(a, 'decline', { group: open, member: c.id });
+  assert.ok(events.some(e => e.user === c.id && e.event === 'group-request' && e.data.approved === false));
+  assert.throws(() => call(a, 'approve', { group: open, member: c.id }), /no longer pending/);
+  call(a, 'approve', { group: open, member: b.id });
+  assert.ok(events.some(e => e.user === b.id && e.event === 'group-request' && e.data.approved === true));
+  assert.equal(call(b, 'state', { group: open }, 'GET').joined, true);
+  // Moderators decide too, while regular members cannot.
+  call(d, 'request', { group: open });
+  assert.throws(() => call(b, 'approve', { group: open, member: d.id }), /owner or a moderator/);
+  call(a, 'promote', { group: open, member: b.id });
+  call(b, 'approve', { group: open, member: d.id });
+  // A withdrawn request disappears; banned people cannot ask again; locked rooms refuse requests.
+  call(c, 'request', { group: open }); call(c, 'request-cancel', { group: open });
+  assert.equal(store.get(open).requests.size, 0);
+  call(a, 'kick', { group: open, member: d.id }); call(d, 'request', { group: open });
+  call(a, 'ban', { group: open, member: b.id });
+  assert.throws(() => call(b, 'request', { group: open }), /banned/);
+  call(a, 'update', { group: open, name: 'Discoverable', locked: true });
+  assert.throws(() => call(a, 'approve', { group: open, member: d.id }), /locked/);
+  assert.throws(() => call(c, 'request', { group: open }), /locked/);
+  // Leaving the site clears pending requests.
+  store.removeUser(d.id); assert.equal(store.get(open).requests.size, 0);
+});
+
 test('room settings validate, limit and lock joins, and shorten room lifetime', () => {
-  const { store, users: [a,b,c,d], call, advance } = setup();
+  const { store, users: [a,b,c,d], call, join, advance } = setup();
   for (const invalid of [{ limit: 1 }, { limit: 21 }, { limit: '5' }, { slowMode: 7 }, { lifetime: 48 }, { disappear: 1 }, { locked: 'yes' }])
     assert.throws(() => call(a, 'create', { name: 'Bad', ...invalid }), /setting|limit/);
   const room = call(a, 'create', { name: 'Small', limit: 2, lifetime: 1 });
   assert.equal(room.expiresAt, store.get(room.id).updated + 3600000);
-  call(b, 'join', { group: room.id });
-  assert.throws(() => call(c, 'join', { group: room.id }), /full \(2 members\)/);
+  join(b, room.id);
+  assert.throws(() => call(c, 'request', { group: room.id }), /full \(2 members\)/);
   call(a, 'update', { group: room.id, name: 'Small', limit: 4, locked: true });
   assert.equal(store.get(room.id).lifetime, 1);
-  assert.throws(() => call(c, 'join', { group: room.id }), /locked/);
+  assert.throws(() => call(c, 'request', { group: room.id }), /locked/);
   call(a, 'update', { group: room.id, name: 'Small', locked: false });
-  call(c, 'join', { group: room.id });
+  join(c, room.id);
   advance(3600000);
   assert.throws(() => call(d, 'join', { group: room.id }), /expired/);
 });
 
 test('invite links admit people to invite-only rooms within their expiry and use limits', () => {
-  const { users: [a,b,c,d], call, advance } = setup();
+  const { users: [a,b,c,d], call, join, advance } = setup();
   const group = call(a, 'create', { name: 'Linked', access: 'invite' }).id;
   assert.throws(() => call(a, 'link-create', { group, hours: 2, uses: 1 }), /listed/);
   const token = call(a, 'link-create', { group, hours: 1, uses: 1 }).links[0].token;
@@ -379,9 +416,9 @@ test('invite links admit people to invite-only rooms within their expiry and use
 });
 
 test('disappearing messages are removed for everyone and from history', () => {
-  const { store, users: [a,b], events, call, send, advance } = setup();
+  const { store, users: [a,b], events, call, join, send, advance } = setup();
   const group = call(a, 'create', { name: 'Fleeting', disappear: 5 }).id;
-  call(b, 'join', { group });
+  join(b, group);
   const old = call(a, 'message', send(a, group));
   advance(4 * 60000); const recent = call(b, 'message', send(b, group));
   advance(60001);
@@ -392,7 +429,7 @@ test('disappearing messages are removed for everyone and from history', () => {
 });
 
 test('history sharing lets later members read messages sent while it was on, verified by the author signature', async () => {
-  const { store, attachments, users: [a,b,c,d], events, call, send } = setup();
+  const { store, attachments, users: [a,b,c,d], events, call, join, send } = setup();
   const open = (m, u) => m.shared ? crypto.decryptGroupShare(m, u.id, u.identity, m.shared.sharerKey, m.senderSignKey) : crypto.decryptGroupMessage(m, u.id, u.identity, m.senderKey, m.senderSignKey);
   // What a member's browser does: re-encrypt every message it can read for the members who cannot.
   const shareFrom = (sharer, group) => {
@@ -405,7 +442,7 @@ test('history sharing lets later members read messages sent while it was on, ver
     return call(sharer, 'history-share', { group, shares });
   };
   const consistent = group => { assert.equal(store.bytes, store.get(group).bytes); assert.equal(store.bytes, store.get(group).history.reduce((sum, m) => sum + m.bytes, 0)); };
-  const group = call(a, 'create', { name: 'Shared' }).id; call(b, 'join', { group });
+  const group = call(a, 'create', { name: 'Shared' }).id; join(b, group);
   const before = call(a, 'message', send(a, group, 'before sharing'));
   assert.throws(() => call(a, 'create', { name: 'Bad', shareHistory: 'yes' }), /setting/);
   call(a, 'update', { group, name: 'Shared', shareHistory: true });
@@ -421,7 +458,7 @@ test('history sharing lets later members read messages sent while it was on, ver
   assert.throws(() => crypto.decryptGroupMessage({ ...m1, shareable: false }, a.id, a.identity, a.publicKey, a.signKey), /metadata/);
   assert.throws(() => crypto.decryptGroupMessage({ ...before, shareable: true }, a.id, a.identity, a.publicKey, a.signKey), /metadata/);
 
-  call(c, 'join', { group });
+  join(c, group);
   assert.equal(call(c, 'state', { group }, 'GET').pendingHistory, true);
   assert.deepEqual(call(c, 'history', { group }, 'GET'), []);
   assert.deepEqual(call(c, 'history-share-state', { group }, 'GET').messages, []);
@@ -466,7 +503,7 @@ test('history sharing lets later members read messages sent while it was on, ver
   const state = call(a, 'state', { group }, 'GET'), fileId = randomUUID();
   call(a, 'message', { group, id: fileId, version: state.version, attachmentId: upload.id, shareable: true,
     envelopes: crypto.encryptGroupMessage({ id: fileId, group, version: state.version, sender: a.id, text: '', file, shareable: true }, a.identity, state.members, a.signing) });
-  call(d, 'join', { group });
+  join(d, group);
   assert.throws(() => attachments.get(upload.id, d.id), /unavailable/);
   shareFrom(c, group);
   assert.deepEqual(open(call(d, 'history', { group }, 'GET').find(m => m.id === fileId), d).file, file);
@@ -476,7 +513,7 @@ test('history sharing lets later members read messages sent while it was on, ver
   call(d, 'leave', { group }); consistent(group);
   assert.ok(store.get(group).history.every(m => !m.shares || !Object.hasOwn(m.shares, d.id)));
   assert.throws(() => store.checkAttachment(attachments.items.get(upload.id), d), /unavailable/);
-  call(d, 'join', { group });
+  join(d, group);
   assert.equal(call(d, 'state', { group }, 'GET').pendingHistory, true);
   // Turning sharing off keeps earlier shareable messages shareable but stops new ones.
   call(a, 'update', { group, name: 'Shared', shareHistory: false });
@@ -488,9 +525,9 @@ test('history sharing lets later members read messages sent while it was on, ver
 });
 
 test('members who are away leave their rooms, hand over ownership and keep room bans', () => {
-  const { store, users: [a, b, c], call } = setup();
+  const { store, users: [a, b, c], call, join } = setup();
   const group = call(a, 'create', { name: 'Away' }).id;
-  call(b, 'join', { group }); call(c, 'join', { group });
+  join(b, group); join(c, group);
   call(a, 'ban', { group, member: c.id });
   const solo = call(a, 'create', { name: 'Solo' }).id;
   store.leaveAll(a.id);

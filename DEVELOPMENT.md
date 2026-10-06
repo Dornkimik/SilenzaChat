@@ -140,6 +140,7 @@ Additional browser checks:
 | `npm run test:slow-network:browser` | Temporary rooms on a slow connection (like Tor): concurrent sends during membership changes, message order, reconnect catch-up |
 | `npm run test:private-controls:browser` | Blocking, unblocking, removing chats from the sidebar |
 | `npm run test:editing:browser` | Editing messages |
+| `npm run test:social:browser` | Profile gender/age, read receipts, drag-and-drop attachments, image viewer, click-to-show images |
 | `npm run test:accounts:browser` | Registration, login, account settings |
 | `npm run test:announcements:browser` | Announcements |
 | `npm run test:feedback:browser` | Feedback submission and admin inbox |

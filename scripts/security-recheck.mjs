@@ -45,7 +45,8 @@ try {
   assert.match(await a.locator('#encryption-status').textContent(), /End-to-end encrypted/);
 
   const groupId = await a.evaluate(async () => (await api('groups/create', { name: 'Security regression', access: 'open' })).id);
-  await b.request.post(`${origin}/api/groups/join`, { headers: { Origin: origin }, data: { group: groupId } });
+  await b.request.post(`${origin}/api/groups/request`, { headers: { Origin: origin }, data: { group: groupId } });
+  await a.evaluate(async ({ group, member }) => api('groups/approve', { group, member }), { group: groupId, member: peer.id });
   const senderKey = await a.evaluate(async id => (await api(`identity?peer=${id}`)).publicKey, peer.id);
   for (const kind of ['private', 'group']) {
     const target = kind === 'private' ? { peer: peer.id } : { group: groupId };

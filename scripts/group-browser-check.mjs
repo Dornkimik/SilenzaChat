@@ -97,8 +97,12 @@ try {
   await a.locator('#group-description').fill('Updated description'); await a.locator('#group-rules').fill('Listen first.');
   await a.selectOption('#group-access', 'open'); await a.locator('#group-save').click();
   await b.waitForFunction(() => document.querySelector('#room-description').textContent === 'Updated description');
-  await c.locator('#groups .group-room').click(); await c.locator('#group-join').click();
+  await c.locator('#groups .group-room').click(); assert.equal(await c.locator('#group-join').textContent(), 'Ask to join');
+  assert.equal((await api(c, 'groups/join', { group })).status, 403);
+  await c.locator('#group-join').click(); await c.locator('#group-join').filter({ hasText: 'Cancel join request' }).waitFor();
+  await a.locator('#group-requests .group-member').filter({ hasText: uc.alias }).getByRole('button', { name: 'Approve', exact: true }).click();
   await c.waitForFunction(() => !document.querySelector('#message').disabled && document.querySelector('#room-title').textContent === 'Evening circle');
+  await a.locator('#group-requests-section').waitFor({ state: 'hidden' });
   assert.equal(await c.getByText('encrypted group sentinel', { exact: true }).count(), 0);
   assert.equal((await c.request.get(`${origin}/api/attachments/${firstImage.attachmentId}`)).status(), 404);
   await send(c, 'hello from new member'); await b.getByText('hello from new member', { exact: true }).waitFor();

@@ -31,6 +31,7 @@ const groupRole = (group, id) => group?.owner === id ? 'owner' : group?.moderato
 const isGroupStaff = group => groupRole(group, me.id) !== 'member';
 // Moderators manage regular members; the owner manages everyone else.
 const canManage = (group, id) => id !== me.id && roleRank[groupRole(group, me.id)] > roleRank[groupRole(group, id)];
+const accessLabel = group => group?.access === 'invite' ? 'Hidden' : 'Discoverable';
 const shortTime = time => new Date(time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 // Why the current member cannot post in this room right now, if anything.
 function groupPostBlock(group) {
@@ -56,7 +57,7 @@ function renderAdminGroups() {
     const remove = element('button', 'delete-room', 'Remove');
     const actions = element('div', 'group-member-actions');
     actions.append(edit, remove);
-    row.append(element('span', '', `${group.name} · ${group.access === 'invite' ? 'Invite only' : 'Open'} · ${group.count} members`), actions);
+    row.append(element('span', '', `${group.name} · ${accessLabel(group)} · ${group.count} members`), actions);
     edit.onclick = () => {
       moderatingGroup = group.id;
       for (const field of ['name', 'description', 'rules']) $(`#moderate-group-${field}`).value = group[field];
@@ -78,7 +79,7 @@ function renderAdminGroups() {
 function renderGroups() {
   $('#groups').replaceChildren(...groupRooms.map(group => {
     const button = element('button', `nav-room group-room${current?.group === group.id ? ' active' : ''}`);
-    const count = group.invited ? 'Invited' : group.joined ? 'Joined' : group.locked ? 'Locked' : `${group.count}/${group.limit || 20}`;
+    const count = group.joined ? (group.requests ? `${group.requests} waiting` : 'Joined') : group.invited ? 'Invited' : group.requested ? 'Requested' : group.locked ? 'Locked' : `${group.count}/${group.limit || 20}`;
     button.append(element('span', 'hash', group.access === 'invite' ? '◇' : '#'), element('span', 'name', group.name)); appendUnread(button, `group:${group.id}`); button.append(element('small', 'count', count));
     button.disabled = group.blocked;
     button.title = group.blocked ? 'You were banned from this room' : group.description;
@@ -137,7 +138,11 @@ function groupPermissions() {
   $('#group-save').textContent = creating ? 'Create room' : 'Save changes';
   $('#group-join').hidden = creating || groupPanel.joined;
   $('#group-join').disabled = Boolean(groupPanel?.blocked) || !encryptionClient;
-  $('#group-join').textContent = groupPanel?.inviteToken ? 'Join with invite link' : 'Join encrypted room';
+  $('#group-join').textContent = groupPanel?.inviteToken ? 'Join with invite link' : groupPanel?.invited ? 'Join encrypted room' : groupPanel?.requested ? 'Cancel join request' : 'Ask to join';
+  $('#group-join').className = groupPanel?.requested ? 'text-button' : 'primary';
+  $('#group-request-note').hidden = creating || groupPanel.joined || Boolean(groupPanel.inviteToken || groupPanel.invited);
+  $('#group-request-note').textContent = groupPanel?.requested ? 'Your request is waiting for the owner or a moderator. You join automatically once it is approved.' : 'The owner or a moderator decides who joins. You join automatically once your request is approved.';
+  $('#group-requests-section').hidden = !staff || !groupPanel.joinRequests?.length;
   $('#group-leave').hidden = !groupPanel?.joined;
   $('#group-leave').disabled = owner && groupPanel.count > 1;
   $('#group-delete').hidden = !owner;
@@ -162,7 +167,7 @@ function renderGroupMembers() {
     const role = groupRole(groupPanel, person.id);
     const muted = person.muted ? person.mutedUntil ? ` · Muted until ${shortTime(person.mutedUntil)}` : ' · Muted' : '';
     info.append(username(person.alias, '', person.displayAsAdmin));
-    info.append(element('small', '', `${role === 'owner' ? 'Owner · ' : role === 'moderator' ? 'Moderator · ' : ''}${person.online ? 'Online' : 'Offline'}${muted}${staff ? ` · ${person.messages} ${person.messages === 1 ? 'message' : 'messages'} sent` : ''}`));
+    info.append(element('small', '', `${profileText(person) ? `${profileText(person)} · ` : ''}${role === 'owner' ? 'Owner · ' : role === 'moderator' ? 'Moderator · ' : ''}${person.online ? 'Online' : 'Offline'}${muted}${staff ? ` · ${person.messages} ${person.messages === 1 ? 'message' : 'messages'} sent` : ''}`));
     row.append(info);
     if (person.id !== me.id) {
       const actions = element('div', 'group-member-actions');
@@ -185,7 +190,7 @@ function renderGroupMembers() {
           actions.append(mute);
         }
         actions.append(actionButton('Kick', 'danger-small', () => {
-          if (confirm(`Remove ${person.alias}? They can rejoin later${groupPanel.access === 'invite' ? ' if they are invited again' : ''}.`)) groupAction('kick', { member: person.id });
+          if (confirm(`Remove ${person.alias}? They can come back with an invite, an invite link or an approved request.`)) groupAction('kick', { member: person.id });
         }));
         actions.append(actionButton('Ban', 'danger-small', () => {
           if (confirm(`Ban ${person.alias}? They will lose access and cannot rejoin with this session until they are unbanned.`)) groupAction('ban', { member: person.id });
@@ -195,7 +200,16 @@ function renderGroupMembers() {
     }
     return row;
   }));
-  renderGroupLinks(); renderGroupBans();
+  renderGroupLinks(); renderGroupBans(); renderJoinRequests();
+}
+function renderJoinRequests() {
+  $('#group-requests').replaceChildren(...(groupPanel?.joinRequests || []).map(person => {
+    const row = element('div', 'group-member'), info = element('div', 'group-member-info'), actions = element('div', 'group-member-actions');
+    info.append(username(person.alias, '', person.displayAsAdmin), element('small', '', [profileText(person), `Asked at ${shortTime(person.at)}`].filter(Boolean).join(' · ')));
+    actions.append(actionButton('Approve', 'text-button', () => groupAction('approve', { member: person.id })),
+      actionButton('Decline', 'danger-small', () => groupAction('decline', { member: person.id })));
+    row.append(info, actions); return row;
+  }));
 }
 function inviteURL(token) { return `${location.origin}/chat/#invite=${groupPanel.id}.${token}`; }
 function renderGroupLinks() {
@@ -227,9 +241,12 @@ async function groupAction(action, extra = {}) {
   $('#group-error').textContent = '';
   try {
     if (action === 'join' && groupPanel.inviteToken) extra = { ...extra, invite: groupPanel.inviteToken };
+    // Without an invitation or link, the join button asks to join (or withdraws the request).
+    else if (action === 'join' && !groupPanel.invited) action = groupPanel.requested ? 'request-cancel' : 'request';
     const result = await api(`groups/${action}`, { group: id, ...extra });
     if (action === 'join') { $('#group-dialog').close(); groupPanel = null; await refreshGroups(); await select({ group: id }); }
     else if (action === 'delete' || action === 'leave') { $('#group-dialog').close(); await refreshGroups(); }
+    else if (action === 'request' || action === 'request-cancel') { groupPanel = { ...groupPanel, ...result }; groupPermissions(); refreshGroups(); }
     else if (result.id) groupStateChanged(result);
     else if (action === 'invite') $('#group-error').textContent = 'Invitation sent. The room now appears in their temporary rooms list.';
   } catch(e) { $('#group-error').textContent = e.message; renderGroupMembers(); }
@@ -273,7 +290,7 @@ function refreshInviteCards() {
 function fillInviteCard(card, preview, problem) {
   const [title, detail, button] = card.children;
   title.textContent = preview?.name || 'Temporary room invite';
-  detail.textContent = problem || [preview.access === 'invite' ? 'Invite-only room' : 'Open room', `${preview.count}/${preview.limit} members`, preview.locked && 'Locked'].filter(Boolean).join(' · ');
+  detail.textContent = problem || [`${accessLabel(preview)} room`, `${preview.count}/${preview.limit} members`, preview.locked && 'Locked'].filter(Boolean).join(' · ');
   button.disabled = Boolean(problem);
   button.textContent = problem ? 'Unavailable' : preview.joined ? 'Open room' : 'View & join';
 }

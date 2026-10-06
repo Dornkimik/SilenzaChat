@@ -118,12 +118,12 @@ try {
   const lobby = (await api(a, 'session')).data.rooms[0].id;
   assert.equal((await api(a, 'message', { room: lobby, text: `Come join us: ${reusable}` })).status, 200);
   const card = c.locator('.invite-card').filter({ hasText: 'Control room' });
-  await card.locator('small').filter({ hasText: /^Invite-only room · 3\/5 members$/ }).waitFor();
+  await card.locator('small').filter({ hasText: /^Hidden room · 3\/5 members$/ }).waitFor();
   // Room changes refresh cards that are already on screen.
   await a.locator('#group-details').click(); await a.locator('#group-locked').check(); await a.locator('#group-save').click();
   await card.locator('small').filter({ hasText: /· Locked$/ }).waitFor();
   await a.locator('#group-locked').uncheck(); await a.locator('#group-save').click(); await a.locator('#group-dialog .close-dialog').click();
-  await card.locator('small').filter({ hasText: /^Invite-only room · 3\/5 members$/ }).waitFor();
+  await card.locator('small').filter({ hasText: /^Hidden room · 3\/5 members$/ }).waitFor();
   await card.getByRole('button', { name: 'View & join' }).click();
   await c.locator('#group-join').filter({ hasText: 'Join with invite link' }).click(); await ready(c);
   assert.equal(new URL(c.url()).hash, '');

@@ -12,6 +12,7 @@ async function composer() {
     setAttribute(key, value) { this.attributes[key] = value; }
     removeAttribute(key) { delete this.attributes[key]; }
     focus() {}
+    addEventListener() {}
     setRangeText(value, start, end) { this.value = this.value.slice(0, start) + value + this.value.slice(end); this.selectionStart = this.selectionEnd = start + value.length; }
   }
   const nodes = new Map(), calls = [];

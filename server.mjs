@@ -87,7 +87,10 @@ const aliasTaken = alias => { const lower = alias.toLowerCase();
   return [...sessions.values()].some(s => s.alias.toLowerCase() === lower) || accounts.items.some(a => a.username.toLowerCase() === lower); };
 const online = s => s.streams.size > 0;
 const displaysAsAdmin = s => s.displayAsAdmin === true && isAdmin(s);
-const safeUser = s => ({ id: s.id, alias: s.alias, online: online(s), displayAsAdmin: displaysAsAdmin(s) });
+// Optional, self-described profile details that everyone can see. Ages start at 18.
+const GENDERS = ['woman', 'man', 'nonbinary', 'other'];
+const profileOf = source => ({ ...(GENDERS.includes(source?.gender) ? { gender: source.gender } : {}), ...(Number.isInteger(source?.age) && source.age >= 18 && source.age <= 99 ? { age: source.age } : {}) });
+const safeUser = s => ({ id: s.id, alias: s.alias, online: online(s), displayAsAdmin: displaysAsAdmin(s), ...profileOf(s) });
 const frame = (event, data) => `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 const write = (s, text) => { for (const stream of s.streams) {
   if (stream.writableLength > 256000) { stream.destroy(); continue; }
@@ -290,6 +293,7 @@ const server = http.createServer(async (req, res) => {
       security.authenticated(clientKey, input.username);
       session.seen = Date.now();
       session.accountId = account.id; session.alias = account.username; session.displayAsAdmin = false;
+      delete session.gender; delete session.age; Object.assign(session, profileOf(account));
       sessions.delete(token);
       const secret = randomBytes(32).toString('hex'); sessions.set(secret, session); cookie(secret);
       publishAppearance(session); publishRooms();
@@ -424,6 +428,21 @@ const server = http.createServer(async (req, res) => {
       res.setHeader('Set-Cookie', 'silenza=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
       presence(); publishRooms(); json({ ok: true }); return;
     }
+    if (url.pathname === '/api/profile') {
+      if (Object.keys(input).some(key => !['gender', 'age'].includes(key))) fail(400, 'Invalid profile.');
+      if (input.gender != null && input.gender !== '' && !GENDERS.includes(input.gender)) fail(400, 'Choose one of the listed genders, or leave it empty.');
+      if (input.age != null && (!Number.isInteger(input.age) || input.age < 18 || input.age > 99)) fail(400, 'Enter an age between 18 and 99, or leave it empty.');
+      const profile = profileOf(input);
+      // An account keeps its profile across logins; a guest's lasts for the session.
+      if (session.accountId) await accounts.save(items => items.map(a => {
+        if (a.id !== session.accountId) return a;
+        const { gender, age, ...rest } = a; return { ...rest, ...profile };
+      }));
+      for (const s of sessions.values()) if (s === session || (session.accountId && s.accountId === session.accountId)) {
+        delete s.gender; delete s.age; Object.assign(s, profile); publishAppearance(s);
+      }
+      json(publicSession(session)); return;
+    }
     if (url.pathname === '/api/private/block') {
       if (typeof input.blocked !== 'boolean') fail(400, 'Choose block or unblock.');
       const peer = sessionById(input.peer);
@@ -434,6 +453,20 @@ const server = http.createServer(async (req, res) => {
       await blocks.update(session, input.blocked ? userKey(peer) : existing.key, input.blocked ? peer.alias : existing.alias, input.blocked);
       if (input.blocked) dropPrivateHistories(session, peer);
       publishPrivatePreferences(session); json(privatePreferences(session)); return;
+    }
+    // Read receipts: the recipient marks everything the peer sent up to a message as seen, and the
+    // sender's sessions are told which messages were read. Only the server-held times change.
+    if (url.pathname === '/api/private/read') {
+      const peer = sessionById(input.peer);
+      if (!peer || peer.id === session.id || typeof input.id !== 'string') fail(404, 'That conversation is no longer available.');
+      ensurePrivateAllowed(session, peer);
+      const history = histories.get(keyFor(session, null, peer.id)) || [];
+      const index = history.findIndex(m => m.id === input.id && m.sender === peer.id);
+      if (index < 0) fail(404, 'That message is no longer available.');
+      const readAt = new Date().toISOString(), ids = [];
+      for (const message of history.slice(0, index + 1)) if (message.sender === peer.id && !message.readAt) { message.readAt = readAt; ids.push(message.id); }
+      if (ids.length) { const read = { sender: peer.id, recipient: session.id, ids, readAt }; emit(peer, 'messages-read', read); emit(session, 'messages-read', read); }
+      json({ ids }); return;
     }
     if (url.pathname === '/api/private/hide' || url.pathname === '/api/private/show') {
       if (typeof input.peer !== 'string' || !/^[0-9a-f-]{36}$/.test(input.peer) || input.peer === session.id) fail(400, 'Choose a private conversation.');

@@ -74,7 +74,8 @@ try {
   const oldUpload = await upload(b, a);
   assert.equal(await download(b, oldUpload), 200);
   const group = (await request(a, 'groups/create', { name: 'Guest transition room', access: 'open' })).data;
-  assert.equal((await request(b, 'groups/join', { group: group.id })).status, 200);
+  assert.equal((await request(b, 'groups/request', { group: group.id })).status, 200);
+  assert.equal((await request(a, 'groups/approve', { group: group.id, member: b.me.id })).status, 200);
   const originalCookie = a.cookie;
   const registered = await request(a, 'auth/register', { username: 'ReviewMember', password: 'disposable review password' });
   assert.equal(registered.status, 200); a.me = registered.data;
