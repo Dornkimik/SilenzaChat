@@ -10,6 +10,9 @@ Anonymous chat with public rooms and end-to-end encrypted private conversations.
 - **Temporary group rooms** – create your own encrypted room (up to 20 people), discoverable or hidden. Nobody joins uninvited: people ask to join a discoverable room and the owner or a moderator approves them, while invited people and anyone with an active invite link join directly. Owners can share expiring invite links, appoint moderators, mute, kick or ban members, turn on slow mode or staff-only posting, lock the room, choose how long the room and its messages last, and let new members read messages sent while history sharing is on (verified by each author's signature).
 - **Attachments** – photos, GIFs, videos, audio and files. Hidden metadata such as GPS location is stripped from media before it is encrypted and uploaded.
 - **Edit, delete and reply** – edit or delete your own messages for everyone.
+- **Read receipts** – ✓ when a private message is sent, ✓✓ once it was seen. You can stop sending your own receipts.
+- **Optional profile** – show your age and gender next to your name, or leave them empty.
+- **Images your way** – drag files onto the chat to attach them, click an image to view it larger, or keep images hidden until you click them.
 - **Identity verification** – compare a safety code with your chat partner to confirm you are talking to the right key.
 - **Blocking** – block someone to stop private messages in both directions.
 - **Announcements & feedback** – read community updates from the admins and send anonymous feedback.

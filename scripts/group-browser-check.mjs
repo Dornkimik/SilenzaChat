@@ -99,7 +99,7 @@ try {
   await b.waitForFunction(() => document.querySelector('#room-description').textContent === 'Updated description');
   await c.locator('#groups .group-room').click(); assert.equal(await c.locator('#group-join').textContent(), 'Ask to join');
   assert.equal((await api(c, 'groups/join', { group })).status, 403);
-  await c.locator('#group-join').click(); await c.locator('#group-join').filter({ hasText: 'Cancel join request' }).waitFor();
+  await c.locator('#group-join').click(); await c.locator('#group-join').filter({ hasText: 'Cancel join request' }).waitFor(); await a.locator('#command-status').filter({ hasText: `${uc.alias} asked to join` }).waitFor();
   await a.locator('#group-requests .group-member').filter({ hasText: uc.alias }).getByRole('button', { name: 'Approve', exact: true }).click();
   await c.waitForFunction(() => !document.querySelector('#message').disabled && document.querySelector('#room-title').textContent === 'Evening circle');
   await a.locator('#group-requests-section').waitFor({ state: 'hidden' });

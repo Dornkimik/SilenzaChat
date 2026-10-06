@@ -1031,7 +1031,7 @@ $('#profile-form').onsubmit = async event => {
     $('#profile-status').textContent = 'Profile saved. Others see it next to your name.';
   } catch (e) { $('#profile-status').textContent = e.message; } finally { button.disabled = false; }
 };
-function updateSession(session) { delete me.gender; delete me.age; Object.assign(me, session); fillProfileForm(); updateComposerState(); $('#identity-kind').textContent = me.account ? 'Persistent account' : 'Guest identity'; $('#account-security').hidden = !me.account; setAdmin(me.admin); updateAppearance(me); renderMessages(); }
+function updateSession(session) { delete me.gender; delete me.age; Object.assign(me, session); if (!$('#settings-dialog').open) fillProfileForm(); updateComposerState(); $('#identity-kind').textContent = me.account ? 'Persistent account' : 'Guest identity'; $('#account-security').hidden = !me.account; setAdmin(me.admin); updateAppearance(me); renderMessages(); }
 $('#display-as-admin').onchange = async event => {
   const toggle = event.target; toggle.disabled = true;
   try { updateSession(await api('admin/appearance', { displayAsAdmin: toggle.checked })); $('#admin-error').textContent = ''; }
@@ -1193,7 +1193,7 @@ function notifyMessage(message) {
   lastSound = Date.now();
   playSound().catch(e => { $('#sound-status').textContent = e.message; });
 }
-$('#open-settings').onclick = () => $('#settings-dialog').showModal();
+$('#open-settings').onclick = () => { fillProfileForm(); $('#profile-status').textContent = ''; $('#settings-dialog').showModal(); };
 for (const key of Object.keys(soundSettings)) {
   const input = $(`#sound-${key}`); input.checked = soundSettings[key];
   input.onchange = () => {

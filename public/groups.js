@@ -2,7 +2,7 @@ let groupRooms = [], groupState = null, groupPanel = null, groupRefresh = 0, mut
 let adminGroups = [], moderatingGroup = null;
 const roleRank = { member: 0, moderator: 1, owner: 2 };
 const groupDefaults = { limit: 20, slowMode: 0, lifetime: 24, disappear: 0, readOnly: false, locked: false, shareHistory: false };
-const sharingGroups = new Set();
+const sharingGroups = new Set(), knownRequests = new Map();
 // Re-encrypts shareable room history for members who joined later. Every online member may try;
 // a random delay spreads the work, and the server skips copies someone else already shared.
 async function shareGroupHistory(group) {
@@ -103,6 +103,12 @@ function closeCurrentGroup(reason) {
 }
 function groupStateChanged(state) {
   const index = groupRooms.findIndex(g => g.id === state.id);
+  // Staff hear about new join requests wherever they are in the app.
+  if (state.joinRequests) {
+    const known = knownRequests.get(state.id), fresh = known ? state.joinRequests.filter(r => !known.has(r.id)) : [];
+    knownRequests.set(state.id, new Set(state.joinRequests.map(r => r.id)));
+    if (fresh.length) status(`${fresh.at(-1).alias} asked to join “${state.name}”. Open Room details & members to approve or decline.`);
+  }
   if (index !== -1) groupRooms[index] = { ...groupRooms[index], ...state };
   if (current?.group === state.id && groupState && Boolean(groupState.shareHistory) !== Boolean(state.shareHistory)) {
     status(state.shareHistory ? 'History sharing is on: people who join later can read messages sent from now on.' : 'History sharing is off: new messages stay with the current members.');

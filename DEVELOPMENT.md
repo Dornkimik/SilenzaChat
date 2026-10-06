@@ -73,7 +73,7 @@ All settings are environment variables (see [`.env.example`](.env.example)).
 
 | File | Contents |
 | --- | --- |
-| `accounts.json` | Accounts, password hashes, roles |
+| `accounts.json` | Accounts, password hashes, roles, optional profile age/gender |
 | `blocks.json` | Account-to-account blocks |
 | `rooms.json` | Main/public rooms (three starter rooms are seeded if missing) |
 | `bans.json` | Hashed session/account bans |
