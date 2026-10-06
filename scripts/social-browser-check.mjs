@@ -42,7 +42,7 @@ try {
 
   // Profile: optional gender and age, visible next to the name for others.
   await a.locator('#open-settings').click();
-  await a.selectOption('#profile-gender', 'woman'); await a.locator('#profile-age').fill('29');
+  await a.locator('#profile-gender input[value="woman"]').check(); await a.locator('#profile-age').fill('29');
   await a.locator('#profile-form button').click(); await a.locator('#profile-status').filter({ hasText: 'Profile saved' }).waitFor();
   await a.locator('#settings-dialog .close-dialog').click();
   await b.locator('.person').filter({ hasText: ua.alias }).locator('.person-profile').filter({ hasText: '29 · Woman' }).waitFor();
@@ -72,7 +72,7 @@ try {
   assert.equal(await b.evaluate(() => document.querySelector('#image-viewer').open), false);
 
   // Click-to-show: images stay hidden and are not downloaded until asked for.
-  await b.locator('#open-settings').click(); await b.locator('#click-to-show').check(); await b.locator('#settings-dialog .close-dialog').click();
+  await b.locator('#open-settings').click(); await b.locator('#settings-tab-privacy').click(); await b.locator('#click-to-show').check(); await b.locator('#settings-dialog .close-dialog').click();
   const downloads = [];
   b.on('request', request => { if (request.url().includes('/api/attachments/')) downloads.push(request.url()); });
   await dropImage(a, 90); await a.locator('#attachment-preview').waitFor({ state: 'visible' });
@@ -86,7 +86,7 @@ try {
   assert.equal(downloads.length, 1);
 
   // With read receipts off, the sender keeps seeing a single check.
-  await b.locator('#open-settings').click(); await b.locator('#read-receipts').uncheck(); await b.locator('#settings-dialog .close-dialog').click();
+  await b.locator('#open-settings').click(); await b.locator('#settings-tab-privacy').click(); await b.locator('#read-receipts').uncheck(); await b.locator('#settings-dialog .close-dialog').click();
   await send(a, 'Quietly read');
   await b.locator('#messages').getByText('Quietly read', { exact: true }).waitFor();
   await new Promise(resolve => setTimeout(resolve, 1500));

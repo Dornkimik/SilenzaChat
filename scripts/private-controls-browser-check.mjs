@@ -37,7 +37,7 @@ try {
   await a.waitForFunction(() => document.querySelectorAll('#dms .dm-room').length === 0);
   await b.locator('#message').fill('Cannot send'); await b.locator('.send-button').click();
   await b.locator('#error').getByText(/blocked the other/).waitFor();
-  await a.locator('#open-settings').click();
+  await a.locator('#open-settings').click(); await a.locator('#settings-tab-blocked').click();
   await a.getByRole('button', { name: `Unblock ${aliasB}`, exact: true }).click();
   await a.locator('#blocked-users').getByText('No blocked users.').waitFor();
   await a.locator('#settings-dialog .close-dialog').click();

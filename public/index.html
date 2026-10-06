@@ -27,7 +27,7 @@
       <nav id="dms" aria-label="Private conversations"></nav>
       <p class="aside-hint" id="dm-hint">Choose someone online to start a private chat.</p>
       <div class="sidebar-bottom">
-        <button class="admin-link" id="open-settings">Profile, notifications &amp; account</button><button class="admin-link" id="open-admin" hidden><span>◇</span> Room management <span>↗</span></button>
+        <button class="admin-link" id="open-settings">⚙ Settings</button><button class="admin-link" id="open-admin" hidden><span>◇</span> Room management <span>↗</span></button>
         <div class="identity"><span class="avatar me-avatar">?</span><div><strong id="my-alias">Finding your alias…</strong><small id="identity-kind">Guest identity</small></div></div>
       </div>
     </aside>
@@ -45,38 +45,89 @@
     </main>
     <aside class="people-sidebar"><div class="people-header"><h2>In good company</h2><span id="online-count">0</span></div><p class="people-caption">A familiar face starts with a hello.</p><div id="people"></div><div class="room-note"><span class="note-icon">✳</span><h3>A little room etiquette</h3><p>Be curious. Be kind.<br>Give people space to be themselves.</p><div class="note-rule"></div><p class="privacy-copy">No account or real name needed. Chat messages are temporary; announcements are saved. Please keep personal details to yourself.</p><button id="privacy-button" type="button" aria-haspopup="dialog" aria-controls="privacy-dialog">Privacy &amp; security FAQ ↗</button></div><div class="footer-wordmark">LESS NOISE. MORE CONNECTION.</div></aside>
   </div>
-  <dialog id="settings-dialog" aria-labelledby="settings-title">
-    <div class="dialog-heading"><h2 id="settings-title">Profile, notifications &amp; account</h2><button class="close-dialog" type="button" aria-label="Close settings">×</button></div>
-    <section class="blocked-settings profile-settings" aria-labelledby="profile-title"><h3 id="profile-title">Your profile</h3>
-      <p>Optional. Everyone who sees your name can see these details. Leave a field empty to hide it. Accounts keep them across logins; for guests they last for this session.</p>
-      <form id="profile-form"><div class="group-settings"><div><label for="profile-gender">Gender</label><select id="profile-gender"><option value="">Not shown</option><option value="woman">Woman</option><option value="man">Man</option><option value="nonbinary">Non-binary</option><option value="other">Other</option></select></div>
-        <div><label for="profile-age">Age <span>(18–99)</span></label><input id="profile-age" type="number" min="18" max="99" step="1" inputmode="numeric" placeholder="Not shown"></div></div>
-        <button class="primary" type="submit">Save profile</button></form><p id="profile-status" role="status"></p></section>
-    <h3 class="settings-subheading">Privacy &amp; images</h3>
-    <label class="sound-choice"><input id="read-receipts" type="checkbox"> Send read receipts in private chats</label>
-    <p class="group-hint">The other person sees ✓✓ once you have opened their messages. Turning this off stops sending receipts; you still see theirs.</p>
-    <label class="sound-choice"><input id="click-to-show" type="checkbox"> Show images only when I click them</label>
-    <p class="group-hint">Images then stay hidden and are not downloaded until you choose Show image. Click any shown image to see it larger.</p>
-    <h3 class="settings-subheading">Visual notifications</h3>
-    <p>Show unread counts in the sidebar and the browser tab title. Main rooms are off by default; choices are saved on this browser.</p>
-    <label class="sound-choice"><input id="visual-private" type="checkbox"> Private chats</label>
-    <label class="sound-choice"><input id="visual-groups" type="checkbox"> Temporary rooms</label>
-    <label class="sound-choice"><input id="visual-rooms" type="checkbox"> Main rooms</label>
-    <h3 class="settings-subheading">Sounds</h3>
-    <p>Play a gentle sound for incoming messages. Sounds are off by default and saved on this browser.</p>
-    <label class="sound-choice"><input id="sound-private" type="checkbox"> Private chats</label>
-    <label class="sound-choice"><input id="sound-groups" type="checkbox"> Temporary groups</label>
-    <label class="sound-choice"><input id="sound-rooms" type="checkbox"> Main rooms</label>
-    <button id="test-sound" class="text-button" type="button">Test sound</button><p id="sound-status" role="status"></p>
-    <section class="blocked-settings" aria-labelledby="blocked-title"><h3 id="blocked-title">Blocked users</h3><p>Blocking stops private messages and attachments in both directions. You may still see each other in shared rooms. Account blocks apply across logins; guest blocks last for this session.</p><div id="blocked-users"></div><p id="blocked-status" role="status"></p></section>
-    <section class="blocked-settings" id="account-security" aria-labelledby="account-security-title" hidden><h3 id="account-security-title">Account security</h3>
-      <form id="password-form"><label for="current-password">Current password</label><input id="current-password" type="password" autocomplete="current-password" maxlength="128" required><label for="new-password">New password <span>(15–128 characters)</span></label><input id="new-password" type="password" autocomplete="new-password" minlength="15" maxlength="128" required><button class="primary" type="submit">Change password</button></form>
-      <p>Changing your password signs out every other device.</p>
-      <button id="logout-all" class="text-button" type="button">Sign out all other devices</button>
-      <form id="delete-account-form"><label for="delete-password">Delete account <span>(enter your password to confirm)</span></label><input id="delete-password" type="password" autocomplete="current-password" maxlength="128" required><button class="danger" type="submit">Delete my account permanently</button></form>
-      <p id="account-security-status" role="status"></p>
-    </section>
-    <button id="account-signout" class="text-button" type="button">Sign out / change identity</button>
+  <dialog id="settings-dialog" class="settings-dialog" aria-labelledby="settings-title">
+    <div class="dialog-heading"><div><div class="eyebrow">YOUR SPACE</div><h2 id="settings-title">Settings</h2></div><button class="close-dialog" type="button" aria-label="Close settings">×</button></div>
+    <div class="settings-identity">
+      <span class="avatar settings-avatar" id="settings-avatar" aria-hidden="true">?</span>
+      <div class="settings-identity-text"><strong id="settings-alias">You</strong><small id="settings-preview">Guest identity</small></div>
+      <button id="account-signout" type="button">Sign out</button>
+    </div>
+    <p id="signout-status" class="settings-inline-status" role="status"></p>
+    <div class="settings-layout">
+      <nav class="settings-nav" role="tablist" aria-label="Settings sections" aria-orientation="vertical">
+        <button id="settings-tab-profile" type="button" role="tab" aria-controls="settings-profile" aria-selected="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 3.6-6 8-6s8 2 8 6"/></svg>Profile</button>
+        <button id="settings-tab-privacy" type="button" role="tab" aria-controls="settings-privacy" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z"/><path d="M9 12l2 2 4-4"/></svg>Privacy &amp; images</button>
+        <button id="settings-tab-notifications" type="button" role="tab" aria-controls="settings-notifications" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 16v-5a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 21h4"/></svg>Notifications</button>
+        <button id="settings-tab-blocked" type="button" role="tab" aria-controls="settings-blocked" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M5.6 5.6l12.8 12.8"/></svg>Blocked users<span id="blocked-count" class="nav-count"></span></button>
+        <button id="settings-tab-account" type="button" role="tab" aria-controls="settings-account" aria-selected="false" tabindex="-1"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="8" cy="15" r="4"/><path d="M11 12l9-9M16 7l3 3"/></svg>Account</button>
+      </nav>
+      <div class="settings-panels">
+        <section id="settings-profile" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-profile">
+          <h3>Profile</h3>
+          <p class="settings-lead">Optional details shown next to your name. Anything left unset stays private.</p>
+          <form id="profile-form">
+            <fieldset class="settings-field"><legend>Gender</legend>
+              <div class="chip-group" id="profile-gender">
+                <label class="chip"><input type="radio" name="profile-gender" value="" checked><span>Not shown</span></label>
+                <label class="chip"><input type="radio" name="profile-gender" value="woman"><span>Woman</span></label>
+                <label class="chip"><input type="radio" name="profile-gender" value="man"><span>Man</span></label>
+                <label class="chip"><input type="radio" name="profile-gender" value="nonbinary"><span>Non-binary</span></label>
+                <label class="chip"><input type="radio" name="profile-gender" value="other"><span>Other</span></label>
+              </div>
+            </fieldset>
+            <div class="settings-field"><label for="profile-age">Age</label>
+              <div class="age-field"><input id="profile-age" type="number" min="18" max="99" step="1" inputmode="numeric" placeholder="—" aria-describedby="profile-age-hint"><small id="profile-age-hint">18–99 · leave empty to hide</small></div>
+            </div>
+            <div class="settings-actions"><button class="primary compact" type="submit">Save profile</button><p id="profile-status" role="status"></p></div>
+          </form>
+          <p class="settings-note">Everyone who sees your name can see these details. Accounts keep them across logins; for guests they last for this session.</p>
+        </section>
+        <section id="settings-privacy" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-privacy" hidden>
+          <h3>Privacy &amp; images</h3>
+          <p class="settings-lead">Choose what others learn about your reading, and how images reach your screen. Saved on this browser.</p>
+          <div class="settings-group-title">Private chats</div>
+          <div class="settings-card">
+            <label class="setting-row"><span class="setting-text"><strong>Send read receipts</strong><small>The other person sees ✓✓ once you have opened their messages. When off, you still see theirs.</small></span><input id="read-receipts" class="switch" type="checkbox" role="switch"></label>
+          </div>
+          <div class="settings-group-title">Images</div>
+          <div class="settings-card">
+            <label class="setting-row"><span class="setting-text"><strong>Show images only when I click them</strong><small>Images stay hidden and are not downloaded until you choose Show image. Click a shown image to see it larger.</small></span><input id="click-to-show" class="switch" type="checkbox" role="switch"></label>
+          </div>
+        </section>
+        <section id="settings-notifications" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-notifications" hidden>
+          <h3>Notifications</h3>
+          <p class="settings-lead">Badges show unread counts in the sidebar and the tab title. Sounds play a gentle chime. Saved on this browser.</p>
+          <div class="settings-card notify-table" role="group" aria-label="Notification choices">
+            <div class="notify-row notify-head"><span></span><span>Badge</span><span>Sound</span></div>
+            <div class="notify-row"><span class="notify-label">Private chats</span><span class="notify-cell"><input id="visual-private" class="switch" type="checkbox" role="switch" aria-label="Unread badges for private chats"></span><span class="notify-cell"><input id="sound-private" class="switch" type="checkbox" role="switch" aria-label="Sounds for private chats"></span></div>
+            <div class="notify-row"><span class="notify-label">Temporary rooms</span><span class="notify-cell"><input id="visual-groups" class="switch" type="checkbox" role="switch" aria-label="Unread badges for temporary rooms"></span><span class="notify-cell"><input id="sound-groups" class="switch" type="checkbox" role="switch" aria-label="Sounds for temporary rooms"></span></div>
+            <div class="notify-row"><span class="notify-label">Main rooms</span><span class="notify-cell"><input id="visual-rooms" class="switch" type="checkbox" role="switch" aria-label="Unread badges for main rooms"></span><span class="notify-cell"><input id="sound-rooms" class="switch" type="checkbox" role="switch" aria-label="Sounds for main rooms"></span></div>
+          </div>
+          <div class="settings-actions"><button id="test-sound" class="secondary-button" type="button"><span aria-hidden="true">▶</span> Test sound</button><p id="sound-status" role="status"></p></div>
+          <p class="settings-note">Sounds start off. Some browsers only allow audio after you press Test sound once.</p>
+        </section>
+        <section id="settings-blocked" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-blocked" hidden>
+          <h3>Blocked users</h3>
+          <p class="settings-lead">Blocking stops private messages and attachments in both directions. You may still see each other in shared rooms.</p>
+          <div id="blocked-users" class="settings-card blocked-list"></div><p id="blocked-status" role="status"></p>
+          <p class="settings-note">Block someone from the people list or a private chat. Account blocks apply across logins; guest blocks last for this session.</p>
+        </section>
+        <section id="settings-account" class="settings-panel" role="tabpanel" aria-labelledby="settings-tab-account" hidden>
+          <h3>Account</h3>
+          <div id="account-guest-note" class="settings-card settings-callout"><strong>You are using a guest identity.</strong><p>It has a random alias and lasts until you sign out or stay away for 24 hours. Create an account on the start page to keep your username and profile across logins. No email needed.</p></div>
+          <div id="account-security" hidden>
+            <p class="settings-lead">Your username and password are the only way into this account. There is no email recovery.</p>
+            <div class="settings-group-title">Change password</div>
+            <form id="password-form" class="settings-card settings-form"><label for="current-password">Current password</label><input id="current-password" type="password" autocomplete="current-password" maxlength="128" required><label for="new-password">New password <span>(15–128 characters)</span></label><input id="new-password" type="password" autocomplete="new-password" minlength="15" maxlength="128" required><div class="settings-actions"><button class="primary compact" type="submit">Change password</button><small>Signs out every other device.</small></div></form>
+            <div class="settings-group-title">Devices</div>
+            <div class="settings-card setting-row"><span class="setting-text"><strong>Sign out all other devices</strong><small>Ends every other session of this account. This device stays signed in.</small></span><button id="logout-all" class="secondary-button" type="button">Sign out others</button></div>
+            <div class="settings-group-title danger-title">Danger zone</div>
+            <form id="delete-account-form" class="settings-card settings-form danger-zone"><label for="delete-password">Delete account <span>(enter your password to confirm)</span></label><input id="delete-password" type="password" autocomplete="current-password" maxlength="128" required><button class="danger" type="submit">Delete my account permanently</button></form>
+            <p id="account-security-status" role="status"></p>
+          </div>
+        </section>
+      </div>
+    </div>
   </dialog>
   <dialog id="group-dialog" aria-labelledby="group-dialog-title">
     <div class="dialog-heading"><h2 id="group-dialog-title">Create a temporary room</h2><button class="close-dialog" type="button" aria-label="Close room details">×</button></div>
@@ -169,7 +220,7 @@
       <details><summary>Can someone receive a private message while offline?</summary><p>Yes, if they have already opened SilenzaChat and set up their browser’s encryption identity. They can read it when they return while their session and recent message history are still available. Attachments must also be within their expiry period. A server restart clears waiting messages and attachments.</p></details>
     </section>
     <section class="faq-section" aria-labelledby="faq-using">
-      <h3 id="faq-using">Using SilenzaChat</h3><details><summary>Do I need an account?</summary><p>No. Choose Continue as guest for a random name, or create an account with only a username and password. An account keeps your username and permissions across logins. It does not keep a permanent chat archive or sync encryption keys. Passwords are stored as salted hashes, never as plaintext. There is no email recovery, so keep your password safe.</p></details><details><summary>Can I choose which chats notify me?</summary><p>Open Profile, notifications &amp; account in the sidebar. Visual notifications show unread counts in the sidebar and the tab title; they start on for private chats and temporary rooms and off for main rooms. Sounds can be enabled for private chats, temporary groups, main rooms, or any combination, and all start off. Use Test sound if your browser needs permission to play audio. Your choices are saved on this browser.</p></details><details><summary>How do temporary rooms work?</summary><p>Choose Create beside Temporary rooms. Add a description and rules, and choose whether the room is discoverable (listed for everyone) or hidden. Nobody joins on their own: people ask to join a discoverable room and the owner or a moderator approves them, while invited people and anyone with an active invite link join directly. Room owners can invite people, kick members, transfer ownership, delete the room, and see each current member’s total messages sent. Open Room details &amp; members to manage the room or verify a member’s identity.</p><p>Room text, attachments, and captions are end-to-end encrypted. Use ＋ to attach a photo, GIF, video, audio clip or file, with or without a caption. Names, rules, descriptions, membership, and message counts are visible to the server. New members see only future messages. Kicked sessions cannot rejoin or receive new messages, but may retain copies already received.</p><p>Rooms support 20 members and disappear after 24 hours without activity, when empty, or on server restart. Transfer ownership before leaving a room with other members. If you close SilenzaChat or lose your connection for 15 minutes, you leave your temporary rooms automatically. If the owner leaves this way, their session expires or is banned, a moderator or the earliest remaining member becomes owner.</p></details>
+      <h3 id="faq-using">Using SilenzaChat</h3><details><summary>Do I need an account?</summary><p>No. Choose Continue as guest for a random name, or create an account with only a username and password. An account keeps your username and permissions across logins. It does not keep a permanent chat archive or sync encryption keys. Passwords are stored as salted hashes, never as plaintext. There is no email recovery, so keep your password safe.</p></details><details><summary>Can I choose which chats notify me?</summary><p>Open Settings in the sidebar and choose Notifications. Visual notifications show unread counts in the sidebar and the tab title; they start on for private chats and temporary rooms and off for main rooms. Sounds can be enabled for private chats, temporary groups, main rooms, or any combination, and all start off. Use Test sound if your browser needs permission to play audio. Your choices are saved on this browser.</p></details><details><summary>How do temporary rooms work?</summary><p>Choose Create beside Temporary rooms. Add a description and rules, and choose whether the room is discoverable (listed for everyone) or hidden. Nobody joins on their own: people ask to join a discoverable room and the owner or a moderator approves them, while invited people and anyone with an active invite link join directly. Room owners can invite people, kick members, transfer ownership, delete the room, and see each current member’s total messages sent. Open Room details &amp; members to manage the room or verify a member’s identity.</p><p>Room text, attachments, and captions are end-to-end encrypted. Use ＋ to attach a photo, GIF, video, audio clip or file, with or without a caption. Names, rules, descriptions, membership, and message counts are visible to the server. New members see only future messages. Kicked sessions cannot rejoin or receive new messages, but may retain copies already received.</p><p>Rooms support 20 members and disappear after 24 hours without activity, when empty, or on server restart. Transfer ownership before leaving a room with other members. If you close SilenzaChat or lose your connection for 15 minutes, you leave your temporary rooms automatically. If the owner leaves this way, their session expires or is banned, a moderator or the earliest remaining member becomes owner.</p></details>
       <details><summary>How do I start a private chat or send an attachment?</summary><p>Choose someone under <strong>In good company</strong>. On a phone, the people list is below the chat. Private conversations appear in the sidebar.</p><p>In a private chat or temporary room, use <strong>＋</strong> to choose a file, add an optional caption, then send. Photos (JPEG, PNG, WebP), GIFs, videos (MP4, MOV, WebM) and audio (MP3, M4A, WebM, WAV) are shown in the chat with their metadata removed; images can be up to 64 megapixels. Any other file is offered as a download. Attachments can only be sent in encrypted conversations and can be up to 16 MB unless the host changes this limit. Images load automatically unless you turn on <strong>Show images only when I click them</strong> in settings; click a shown image to see it larger. Videos, audio and files are downloaded only when the recipient chooses to load them. You can also drag a file onto the conversation to attach it.</p></details>
       <details><summary>What happens if I refresh, clear browser data, or use another device?</summary><p>Refreshing normally keeps your session and local encryption keys. Tabs in the same browser profile share them. Another browser, browser profile, or device has a separate identity; you can log in with the same account username, but messages, room memberships, and encryption keys do not sync.</p><p>Signing in or registering from a guest session starts a separate account identity. It ends the guest’s private conversations and temporary-room memberships and clears their server-held private history and attachments. Previous public posts keep the guest alias.</p><p>Clearing site data or ending an incognito session can lose your session and encryption keys. The server cannot recover those keys. If your session remains but its key is lost, private chat is blocked; clear the site’s data to start a new anonymous session.</p></details>
       <details><summary>Why is private chat unavailable?</summary><p>Private chat needs HTTPS, or localhost for local use, and browser storage for encryption keys. Both people need to open the current version of SilenzaChat. If encryption cannot be set up, the app blocks private sending instead of sending plaintext.</p><p>If you see an identity-change warning, do not assume it is safe to continue. Contact the other person through a trusted channel. A new anonymous session has a new identity and needs to be verified again.</p></details>

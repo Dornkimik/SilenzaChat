@@ -55,7 +55,7 @@ try {
   await page.locator('#emoji-grid button').first().click();
   assert.equal(await page.locator('#message').inputValue(), '😀');
   await page.locator('#message').fill('');
-  await page.locator('#open-settings').click();
+  await page.locator('#open-settings').click(); await page.locator('#settings-tab-notifications').click();
   for (const key of ['private', 'groups', 'rooms']) assert.equal(await page.locator('#sound-' + key).isChecked(), false);
   await page.locator('#sound-private').check();
   await page.locator('#test-sound').click();

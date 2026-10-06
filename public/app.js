@@ -58,13 +58,14 @@ function applyPrivatePreferences(prefs) {
   renderPeople(); renderDMs(); renderBlockedUsers();
 }
 function renderBlockedUsers() {
+  $('#blocked-count').textContent = blockedUsers.length || '';
   $('#blocked-users').replaceChildren(...blockedUsers.map(person => {
     const row = element('div', 'blocked-user'), button = element('button', 'text-button', 'Unblock');
     button.type = 'button'; button.setAttribute('aria-label', `Unblock ${person.alias}`);
     button.onclick = () => changeBlock(person, false);
-    row.append(element('span', '', person.alias), button); return row;
+    row.append(avatar(person.alias), element('span', 'blocked-name', person.alias), button); return row;
   }));
-  if (!blockedUsers.length) $('#blocked-users').append(element('p', 'aside-hint', 'No blocked users.'));
+  if (!blockedUsers.length) $('#blocked-users').append(element('p', 'aside-hint blocked-empty', 'No blocked users.'));
 }
 async function removePrivateChat(id) {
   try {
@@ -1029,12 +1030,46 @@ function updateAppearance(person) {
   people = people.map(p => { if (p.id !== person.id) return p; const { gender, age, ...rest } = p; return { ...rest, ...person }; }); lastPeopleData = '';
   renderPeople(); renderDMs(); if (current?.peer === person.id) updateHeading();
 }
-function fillProfileForm() { $('#profile-gender').value = me.gender || ''; $('#profile-age').value = me.age || ''; }
+// Settings: an identity card that previews your profile, and one panel per section.
+const chosenGender = () => document.querySelector('input[name="profile-gender"]:checked')?.value || '';
+function previewProfile() {
+  const age = Number($('#profile-age').value);
+  const draft = { gender: chosenGender(), age: Number.isInteger(age) && age >= 18 && age <= 99 ? age : null };
+  $('#settings-preview').textContent = [me.account ? 'Persistent account' : 'Guest identity', profileText(draft)].filter(Boolean).join(' · ');
+}
+function fillProfileForm() {
+  for (const input of document.querySelectorAll('input[name="profile-gender"]')) input.checked = input.value === (me.gender || '');
+  $('#profile-age').value = me.age || '';
+  $('#settings-avatar').textContent = initials(me.alias); $('#settings-alias').replaceChildren(username(me.alias, '', me.displayAsAdmin));
+  $('#account-guest-note').hidden = Boolean(me.account); previewProfile();
+}
+$('#profile-form').oninput = previewProfile;
+let settingsTab = 'profile';
+function showSettingsTab(name, focus = false) {
+  settingsTab = name;
+  for (const tab of document.querySelectorAll('.settings-nav [role="tab"]')) {
+    const selected = tab.id === `settings-tab-${name}`;
+    tab.setAttribute('aria-selected', String(selected)); tab.tabIndex = selected ? 0 : -1;
+    $(`#${tab.getAttribute('aria-controls')}`).hidden = !selected;
+    if (selected && focus) tab.focus();
+  }
+  $('.settings-panels').scrollTop = 0;
+}
+for (const tab of document.querySelectorAll('.settings-nav [role="tab"]')) {
+  tab.onclick = () => showSettingsTab(tab.id.slice('settings-tab-'.length));
+  // Arrow keys move between sections, as in any tab list.
+  tab.onkeydown = event => {
+    const tabs = [...document.querySelectorAll('.settings-nav [role="tab"]')], index = tabs.indexOf(tab);
+    const step = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }[event.key];
+    const next = step ? tabs[(index + step + tabs.length) % tabs.length] : event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs.at(-1) : null;
+    if (next) { event.preventDefault(); showSettingsTab(next.id.slice('settings-tab-'.length), true); }
+  };
+}
 $('#profile-form').onsubmit = async event => {
   event.preventDefault(); const button = $('#profile-form button'); button.disabled = true; $('#profile-status').textContent = '';
   try {
     const age = $('#profile-age').value.trim();
-    updateSession(await api('profile', { gender: $('#profile-gender').value || null, age: age ? Number(age) : null }));
+    updateSession(await api('profile', { gender: chosenGender() || null, age: age ? Number(age) : null }));
     $('#profile-status').textContent = 'Profile saved. Others see it next to your name.';
   } catch (e) { $('#profile-status').textContent = e.message; } finally { button.disabled = false; }
 };
@@ -1200,7 +1235,7 @@ function notifyMessage(message) {
   lastSound = Date.now();
   playSound().catch(e => { $('#sound-status').textContent = e.message; });
 }
-$('#open-settings').onclick = () => { fillProfileForm(); $('#profile-status').textContent = ''; $('#settings-dialog').showModal(); };
+$('#open-settings').onclick = () => { fillProfileForm(); $('#profile-status').textContent = ''; $('#signout-status').textContent = ''; showSettingsTab(settingsTab); $('#settings-dialog').showModal(); };
 for (const key of Object.keys(soundSettings)) {
   const input = $(`#sound-${key}`); input.checked = soundSettings[key];
   input.onchange = () => {
@@ -1293,7 +1328,7 @@ $('#account-signout').onclick = async () => {
     await api('auth/logout', {}); clearSignedOutPage();
     await SilenzaCrypto.clearLocalKeys(); location.assign('/#entry');
   }
-  catch (e) { signingOut = false; $('#sound-status').textContent = e.message; }
+  catch (e) { signingOut = false; $('#signout-status').textContent = e.message; }
 };
 setupGroups();
 start();

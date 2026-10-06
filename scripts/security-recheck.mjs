@@ -96,8 +96,8 @@ try {
     }
   });
   await a.locator('#open-settings').click(); await a.locator('#account-signout').click();
-  await a.waitForFunction(() => location.pathname === '/' || document.querySelector('#sound-status').textContent.length > 0);
-  if (new URL(a.url()).pathname !== '/') throw new Error(await a.locator('#sound-status').textContent());
+  await a.waitForFunction(() => location.pathname === '/' || document.querySelector('#signout-status').textContent.length > 0);
+  if (new URL(a.url()).pathname !== '/') throw new Error(await a.locator('#signout-status').textContent());
   await a.waitForURL(`${origin}/#entry`);
   await a.waitForLoadState('load');
   const retained = await a.evaluate(id => new Promise((resolve, reject) => {
