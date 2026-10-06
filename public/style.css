@@ -542,6 +542,12 @@ dialog input, #emoji-search { border-radius: 7px; background: var(--side); }
 .read-receipt { color: var(--muted); font-size: 12px; letter-spacing: -3px; padding-right: 3px; }
 .read-receipt.seen { color: var(--accent); }
 .removed-notice { color: var(--muted); font-style: italic; }
+.settings-button { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 5px 12px; border: 1px solid var(--line); border-radius: 7px; background: var(--side); color: var(--text); font-size: 12px; font-weight: 600; }
+.settings-button svg { flex-shrink: 0; color: var(--accent); transition: transform .3s; }
+.settings-button:hover { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.settings-button:hover svg { transform: rotate(45deg); }
+@media (prefers-reduced-motion: reduce) { .settings-button svg { transition: none; } }
+@media (max-width: 600px) { .settings-button { width: 34px; padding: 0; justify-content: center; } .settings-button span { display: none; } }
 .update-banner { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 10px 32px; border-bottom: 1px solid var(--line); background: var(--accent-soft); color: var(--text); font-size: 13px; }
 .update-banner[hidden] { display: none; }
 .update-banner button { padding: 6px 14px; border-radius: 7px; background: var(--accent); color: var(--accent-ink); font-weight: 600; }
