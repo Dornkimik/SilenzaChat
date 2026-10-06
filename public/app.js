@@ -289,6 +289,11 @@ function renderMessage(message) {
   if (own) meta.append(element('span', 'you-tag', 'YOU'));
   meta.append(element('time', 'message-time', rooms.find(r => r.id === message.room)?.persistent ? new Date(message.time).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : new Date(message.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })));
   row.id = `message-${message.id}`;
+  if (message.removedBy === 'admin') {
+    row.classList.add('removed-message');
+    content.append(meta, element('p', 'message-text removed-notice', own ? 'Your message was removed by an admin.' : 'This message was removed by an admin.'));
+    row.append(avatar(message.alias, own), content); return row;
+  }
   if (message.mentions?.some(person => person.id === me.id)) row.classList.add('mentioned');
   // Read receipts sit next to the time on your own private messages: ✓ sent, ✓✓ seen.
   if (own && message.recipient && !message.room && !message.group && !message.locked) {
@@ -351,8 +356,10 @@ function renderMessage(message) {
 function applyRemoval(removed) {
   if (!matches(removed)) return;
   const { id } = removed;
+  // An admin removal leaves a notice in place of the message; other removals take it away.
+  const notice = removed.notice?.id === id && removed.notice.removedBy === 'admin' && matches(removed.notice) ? removed.notice : null;
   if (editingMessage?.id === id) { $('#edit-message-dialog').close(); editingMessage = null; }
-  revokeFile(id); messages = messages.filter(message => message.id !== id).map(message => message.reply?.id === id ? { ...message, reply: { id, removed: true } } : message);
+  revokeFile(id); messages = messages.flatMap(message => message.id === id ? (notice ? [notice] : []) : [message.reply?.id === id ? { ...message, reply: { id, removed: true } } : message]);
   if (replying?.id === id) setReply(null);
   renderMessages();
 }

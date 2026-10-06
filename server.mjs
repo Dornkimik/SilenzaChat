@@ -561,7 +561,7 @@ const server = http.createServer(async (req, res) => {
       let message, history, conversation;
       histories.sweep(new Set([...sessions.values()].map(s => s.id)));
       for (const [key, items] of histories) {
-        const found = items.find(m => m.id === input.id && m.sender === session.id);
+        const found = items.find(m => m.id === input.id && m.sender === session.id && !m.removedBy);
         if (found) { message = found; history = items; conversation = key; break; }
       }
       if (!message) fail(404, 'Your message is no longer available to edit.');
@@ -631,7 +631,7 @@ const server = http.createServer(async (req, res) => {
       if (input.peer && (!peer || peer.id === session.id)) fail(404, 'That person is no longer available.');
       if (!input.peer && !allRooms().some(r => r.id === input.room)) fail(404, 'Room no longer exists.');
       const key = keyFor(session, input.room, peer?.id);
-      const original = input.replyTo == null ? null : (histories.get(key) || []).find(m => m.id === input.replyTo);
+      const original = input.replyTo == null ? null : (histories.get(key) || []).find(m => m.id === input.replyTo && !m.removedBy);
       if (input.replyTo != null && !original) fail(400, 'That reply is no longer available in this conversation.');
       const mentions = publicMentions(text);
       session.sent.push(Date.now());
@@ -717,15 +717,19 @@ const server = http.createServer(async (req, res) => {
         // Admins moderate public rooms only. Private message IDs are chosen by clients, so a private
         // message reusing a public message's ID must never shadow it and defeat an admin removal.
         if (adminRemoval && !key.startsWith('room:')) continue;
-        const message = history.find(m => m.id === input.id && (adminRemoval || m.sender === session.id));
+        const message = history.find(m => m.id === input.id && (adminRemoval || (m.sender === session.id && !m.removedBy)));
         if (message) { found = message; conversation = key; break; }
       }
       if (!found) fail(404, 'That message is unavailable or does not belong to you.');
       attachments.remove(found.attachment?.id);
-      const remaining = histories.get(conversation).filter(message => message.id !== found.id);
+      // When an admin removes someone else's message, a notice without the text takes its place, so the
+      // room can see that moderation happened. Removing that notice again deletes it entirely.
+      const notice = adminRemoval && found.sender !== session.id && !found.removedBy ? { id: found.id, sender: found.sender, alias: found.alias,
+        displayAsAdmin: found.displayAsAdmin, time: found.time, room: found.room, recipient: null, text: '', mentions: [], reply: null, removedBy: 'admin' } : null;
+      const remaining = histories.get(conversation).flatMap(message => message.id !== found.id ? [message] : notice ? [notice] : []);
       for (const message of remaining) if (message.reply?.id === found.id) message.reply = { id: found.id, removed: true };
       histories.set(conversation, remaining);
-      const removed = { id: found.id, room: found.room, sender: found.sender, recipient: found.recipient };
+      const removed = { id: found.id, room: found.room, sender: found.sender, recipient: found.recipient, ...(notice ? { notice } : {}) };
       if (found.room) { broadcast('message-removed', removed); publishRooms(); }
       else for (const s of sessions.values()) if (s.id === found.sender || s.id === found.recipient) emit(s, 'message-removed', removed);
       json(removed); return;

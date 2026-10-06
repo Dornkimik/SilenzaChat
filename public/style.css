@@ -541,6 +541,7 @@ dialog input, #emoji-search { border-radius: 7px; background: var(--side); }
 /* Read receipts, image viewer, drag and drop, profiles. */
 .read-receipt { color: var(--muted); font-size: 12px; letter-spacing: -3px; padding-right: 3px; }
 .read-receipt.seen { color: var(--accent); }
+.removed-notice { color: var(--muted); font-style: italic; }
 .image-open { display: block; padding: 0; border: 0; background: transparent; cursor: zoom-in; max-width: 100%; }
 .image-open[hidden] { display: none; }
 .image-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

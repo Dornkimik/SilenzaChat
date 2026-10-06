@@ -179,6 +179,14 @@ test('anonymous public chat, private isolation, admin control and persistence', 
     assert.equal((await request(c, 'message', decoy)).status, 200);
     const removal = await request(a, 'admin/remove-message', { id: target.data.id });
     assert.equal(removal.status, 200); assert.equal(removal.data.room, shadowRoom);
+    // Others see a removal notice instead of the text; it cannot be edited, deleted by its author or replied to.
+    const notice = (await request(b, `history?room=${shadowRoom}`)).data.find(m => m.id === target.data.id);
+    assert.equal(notice.removedBy, 'admin'); assert.equal(notice.text, ''); assert.equal(removal.data.notice.removedBy, 'admin');
+    assert.equal((await request(b, 'message/edit', { id: target.data.id, editVersion: 1, text: 'restored' })).status, 404);
+    assert.equal((await request(b, 'message/delete', { id: target.data.id })).status, 404);
+    assert.equal((await request(b, 'message', { room: shadowRoom, text: 'reply', replyTo: target.data.id })).status, 400);
+    // Removing the notice again deletes it entirely.
+    assert.equal((await request(a, 'admin/remove-message', { id: target.data.id })).data.notice, undefined);
     assert.ok(!(await request(b, `history?room=${shadowRoom}`)).data.some(m => m.id === target.data.id));
     assert.ok((await request(b, `history?peer=${c.me.id}`)).data.some(m => m.id === target.data.id));
     // A multi-byte character split across request body chunks must arrive intact.

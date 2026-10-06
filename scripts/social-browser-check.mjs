@@ -1,4 +1,4 @@
-import { enterGuest } from './auth-browser-helper.mjs';
+import { enterGuest, enterAccount } from './auth-browser-helper.mjs';
 import { chromium } from 'playwright';
 import { spawn } from 'node:child_process';
 import { once } from 'node:events';
@@ -14,7 +14,7 @@ const data = await mkdtemp(path.join(tmpdir(), 'silenzachat-social-'));
 const probe = net.createServer(); probe.listen(0, '127.0.0.1'); await once(probe, 'listening');
 const port = probe.address().port; await new Promise(resolve => probe.close(resolve));
 const origin = `http://127.0.0.1:${port}`;
-const server = spawn(process.execPath, ['server.mjs'], { cwd: root, env: { ...process.env, DATA_DIR: data, PORT: String(port), HOST: '127.0.0.1', ORIGIN: origin }, stdio: ['ignore', 'pipe', 'pipe'] });
+const server = spawn(process.execPath, ['server.mjs'], { cwd: root, env: { ...process.env, DATA_DIR: data, PORT: String(port), HOST: '127.0.0.1', ORIGIN: origin, ADMIN_USERNAME: 'host', ADMIN_PASSWORD: 'social-browser-test' }, stdio: ['ignore', 'pipe', 'pipe'] });
 const shots = process.env.SCREENSHOT_DIR;
 let browser; const errors = [];
 const send = async (page, text) => { await page.locator('#message').fill(text); await page.locator('.send-button').click(); await page.locator('#messages').getByText(text, { exact: true }).waitFor(); };
@@ -91,8 +91,20 @@ try {
   await b.locator('#messages').getByText('Quietly read', { exact: true }).waitFor();
   await new Promise(resolve => setTimeout(resolve, 1500));
   assert.equal(await ownRow(a, 'Quietly read').locator('.read-receipt.seen').count(), 0);
+  // An admin removing someone's public message leaves a notice for everyone in the room.
+  const admin = await (await browser.newContext({ viewport: { width: 1280, height: 860 } })).newPage();
+  admin.on('pageerror', e => errors.push(e.message)); await enterAccount(admin, origin, 'social-browser-test');
+  for (const page of [a, b, admin]) await page.locator('#rooms .nav-room').first().click();
+  await send(b, 'Rude public message');
+  await admin.locator('#messages').getByText('Rude public message', { exact: true }).waitFor();
+  await ownRow(admin, 'Rude public message').locator('.message-remove').click();
+  await a.locator('.removed-notice').filter({ hasText: 'This message was removed by an admin.' }).waitFor();
+  await b.locator('.removed-notice').filter({ hasText: 'Your message was removed by an admin.' }).waitFor();
+  assert.equal(await a.getByText('Rude public message', { exact: true }).count(), 0);
+  await a.reload(); await a.locator('.removed-notice').filter({ hasText: 'This message was removed by an admin.' }).waitFor();
+  if (shots) await a.screenshot({ path: path.join(shots, 'admin-removal.png') });
   assert.deepEqual(errors, []);
-  console.log('PASS: profile gender/age shown to others, read receipts (and opting out), drag-and-drop attachments, image viewer, click-to-show images');
+  console.log('PASS: profile gender/age shown to others, read receipts (and opting out), drag-and-drop attachments, image viewer, click-to-show images, admin removal notices');
 } finally {
   await browser?.close(); server.kill(); await once(server, 'exit').catch(() => {});
   await rm(data, { recursive: true, force: true });
