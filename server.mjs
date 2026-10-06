@@ -232,6 +232,25 @@ async function staticAsset(file) {
   const asset = { mtimeMs, bytes, gzip: gzipSync(bytes, { level: 9 }), etag: `"${createHash('sha256').update(bytes).digest('base64url').slice(0, 27)}"` };
   staticAssets.set(file, asset); return asset;
 }
+const staticFiles = { '/': ['about.html', 'text/html'], '/chat/': ['index.html', 'text/html'], '/robots.txt': ['robots.txt', 'text/plain'], '/sitemap.xml': ['sitemap.xml', 'application/xml'], '/about.css': ['about.css', 'text/css'], '/feedback.js': ['feedback.js', 'text/javascript'], '/auth.js': ['auth.js', 'text/javascript'], '/app.js': ['app.js', 'text/javascript'], '/groups.js': ['groups.js', 'text/javascript'], '/crypto.js': ['crypto.js', 'text/javascript'], '/attachments.js': ['attachments.js', 'text/javascript'], '/vendor/nacl.js': ['../node_modules/tweetnacl/nacl-fast.min.js', 'text/javascript'], '/theme.js': ['theme.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
+const publicAsset = route => staticAsset(path.join(root, 'public', staticFiles[route][0]));
+const assetVersion = asset => asset.etag.slice(1, 13);
+// Pages link their scripts and styles with a content version (/app.js?v=…), so a browser, proxy or
+// CDN can never combine a new page with old code. A changed file gets a new URL; an unchanged one
+// may be cached for a year. The page also carries a build ID that open tabs use to notice updates.
+const pages = new Map();
+async function versionedPage(file) {
+  const html = await staticAsset(path.join(root, 'public', file)), text = html.bytes.toString('utf8');
+  const refs = [...new Set([...text.matchAll(/(?:src|href)="(\/[^"?#]+\.(?:js|css|svg))"/g)].map(match => match[1]))].filter(ref => staticFiles[ref]);
+  const versions = new Map(await Promise.all(refs.map(async ref => [ref, assetVersion(await publicAsset(ref))])));
+  const build = createHash('sha256').update(html.etag + JSON.stringify([...versions])).digest('base64url').slice(0, 16);
+  const cached = pages.get(file);
+  if (cached?.build === build) return cached;
+  const bytes = Buffer.from(text.replace(/((?:src|href)=")(\/[^"?#]+\.(?:js|css|svg))"/g, (match, attribute, ref) => versions.has(ref) ? `${attribute}${ref}?v=${versions.get(ref)}"` : match)
+    .replace('<head>', `<head>\n  <meta name="silenza-build" content="${build}">`));
+  const page = { build, bytes, gzip: gzipSync(bytes, { level: 9 }), etag: `"${build}"` };
+  pages.set(file, page); return page;
+}
 const devHosts = new Set(['localhost', '127.0.0.1', '[::1]', ...(process.env.HOST && !['0.0.0.0', '::'].includes(process.env.HOST) ? [process.env.HOST.includes(':') ? `[${process.env.HOST}]` : process.env.HOST] : [])].map(x => x.toLowerCase()));
 const server = http.createServer(async (req, res) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
@@ -245,13 +264,14 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, 'http://localhost');
     if (!url.pathname.startsWith('/api/')) {
-      const files = { '/': ['about.html', 'text/html'], '/chat/': ['index.html', 'text/html'], '/robots.txt': ['robots.txt', 'text/plain'], '/sitemap.xml': ['sitemap.xml', 'application/xml'], '/about.css': ['about.css', 'text/css'], '/feedback.js': ['feedback.js', 'text/javascript'], '/auth.js': ['auth.js', 'text/javascript'], '/app.js': ['app.js', 'text/javascript'], '/groups.js': ['groups.js', 'text/javascript'], '/crypto.js': ['crypto.js', 'text/javascript'], '/attachments.js': ['attachments.js', 'text/javascript'], '/vendor/nacl.js': ['../node_modules/tweetnacl/nacl-fast.min.js', 'text/javascript'], '/theme.js': ['theme.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
       if (req.method === 'GET' && ['/about', '/about/', '/chat'].includes(url.pathname)) { res.writeHead(301, { Location: url.pathname === '/chat' ? '/chat/' : '/' }); res.end(); return; }
-      if (req.method !== 'GET' || !files[url.pathname]) fail(404, 'Not found.');
-      const [file, type] = files[url.pathname];
-      const asset = await staticAsset(path.join(root, 'public', file));
-      // Browsers revalidate every load, but an unchanged file costs a 304 instead of a full download.
-      const headers = { 'Content-Type': type, 'Cache-Control': 'no-cache', ETag: asset.etag, Vary: 'Accept-Encoding' };
+      if (req.method !== 'GET' || !staticFiles[url.pathname]) fail(404, 'Not found.');
+      const [file, type] = staticFiles[url.pathname], page = type === 'text/html';
+      const asset = page ? await versionedPage(file) : await publicAsset(url.pathname);
+      // Pages and unversioned URLs revalidate every load (an unchanged file costs a 304, not a download).
+      // A URL carrying the file's current version never changes, so it is cached for a year.
+      const immutable = !page && url.searchParams.get('v') === assetVersion(asset);
+      const headers = { 'Content-Type': type, 'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache', ETag: asset.etag, Vary: 'Accept-Encoding' };
       if (req.headers['if-none-match'] === asset.etag) { res.writeHead(304, headers); res.end(); return; }
       const gzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
       res.writeHead(200, gzip ? { ...headers, 'Content-Encoding': 'gzip' } : headers); res.end(gzip ? asset.gzip : asset.bytes); return;
@@ -272,6 +292,7 @@ const server = http.createServer(async (req, res) => {
     let session = sessions.get(token);
     const cookie = secret => res.setHeader('Set-Cookie', `silenza=${secret}; HttpOnly; SameSite=Strict; Path=/${process.env.SECURE_COOKIES === 'true' || origin.startsWith('https:') ? '; Secure' : ''}`);
     if (url.pathname === '/api/auth/status' && req.method === 'GET') { json({ me: session ? publicSession(session) : null }); return; }
+    if (url.pathname === '/api/version' && req.method === 'GET') { json({ build: (await versionedPage('index.html')).build }); return; }
     if (['/api/auth/login', '/api/auth/register'].includes(url.pathname) && req.method === 'POST') {
       const input = await body(req, 4096);
       const clientKey = security.client(req);

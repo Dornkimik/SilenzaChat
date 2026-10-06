@@ -64,7 +64,8 @@ try {
 
   // C loses the connection. Meanwhile A posts and B deletes one of its messages. When C is back the
   // chat catches up without being cleared and redrawn.
-  await c.evaluate(() => { document.querySelector('#messages .chat-message').dataset.kept = 'yes'; });
+  // Mark a row that stays (B message 1 is deleted below, and arrival order varies between runs).
+  await c.evaluate(() => { [...document.querySelectorAll('#messages .chat-message')].find(row => row.querySelector('.message-text')?.textContent === 'A message 1').dataset.kept = 'yes'; });
   // Offline emulation does not cut an open stream, so refuse C's requests and drop its stream instead.
   const offline = route => route.abort('internetdisconnected');
   await c.route('**/api/**', offline);

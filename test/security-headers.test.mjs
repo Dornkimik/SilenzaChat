@@ -54,6 +54,22 @@ test('static files are compressed and revalidate with ETags, keeping security he
     assert.match(again.headers.get('content-security-policy'), /default-src 'self'/);
     const other = await fetch(`${local}/style.css`, { headers: { 'If-None-Match': etag } });
     assert.equal(other.status, 200); await other.body.cancel();
+    // Pages link versioned scripts and styles that may be cached long-term; plain URLs revalidate.
+    assert.equal(first.headers.get('cache-control'), 'no-cache');
+    const page = await fetch(`${local}/chat/`), html = await page.text();
+    assert.equal(page.headers.get('cache-control'), 'no-cache');
+    const build = html.match(/<meta name="silenza-build" content="([\w-]+)">/)?.[1]; assert.ok(build);
+    const script = html.match(/src="(\/app\.js\?v=[\w-]+)"/)?.[1]; assert.ok(script);
+    assert.ok(html.includes('href="/style.css?v=')); assert.ok(html.includes('src="/vendor/nacl.js?v='));
+    const versioned = await fetch(local + script);
+    assert.equal(versioned.headers.get('cache-control'), 'public, max-age=31536000, immutable'); await versioned.body.cancel();
+    const stale = await fetch(`${local}/app.js?v=outdated`);
+    assert.equal(stale.headers.get('cache-control'), 'no-cache'); await stale.body.cancel();
+    assert.equal((await (await fetch(`${local}/api/version`)).json()).build, build);
+    assert.equal((await fetch(`${local}/chat/`, { headers: { 'If-None-Match': page.headers.get('etag') } })).status, 304);
+    // Links to pages are not versioned.
+    const landing = await (await fetch(`${local}/`)).text();
+    assert.ok(!/href="\/(?:chat\/)?\?v=/.test(landing)); assert.ok(landing.includes('href="/about.css?v='));
   } finally {
     const ended = once(child, 'exit'); child.kill(); await ended;
     await rm(directory, { recursive: true, force: true });

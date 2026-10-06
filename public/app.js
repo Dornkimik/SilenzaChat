@@ -1141,7 +1141,7 @@ function connect() {
   clearTimeout(reconnectTimer); stream?.close();
   if (signingOut || !me) return;
   stream = new EventSource('/api/events'); lastEvent = Date.now();
-  stream.onopen = () => { lastEvent = Date.now(); reconnectDelay = 2000; $('#connection').textContent = 'Connected'; $('#connection').classList.add('live'); resync(); };
+  stream.onopen = () => { lastEvent = Date.now(); reconnectDelay = 2000; $('#connection').textContent = 'Connected'; $('#connection').classList.add('live'); resync(); checkForUpdate(); };
   stream.onerror = async () => {
     if (signingOut) return;
     $('#connection').textContent = 'Reconnecting…'; $('#connection').classList.remove('live');
@@ -1190,6 +1190,17 @@ function connect() {
   stream.addEventListener('messages-read', event => applyRead(JSON.parse(event.data)));
   stream.addEventListener('moderation', () => { if (me.admin) refreshAdminState(); });
 }
+// A tab left open across an update would keep running old code against the new server. The page knows
+// the build it was loaded from; after a reconnect, or when the tab is shown again, a newer build on the
+// server is offered as a reload instead.
+const pageBuild = document.querySelector('meta[name="silenza-build"]')?.content;
+let updateChecked = 0;
+async function checkForUpdate() {
+  if (!pageBuild || !$('#update-banner').hidden || Date.now() - updateChecked < 10000) return;
+  updateChecked = Date.now();
+  try { const { build } = await api('version'); if (build && build !== pageBuild) $('#update-banner').hidden = false; } catch {}
+}
+$('#update-reload').onclick = () => location.reload();
 function checkConnection() {
   if (stream && !signingOut && stream.readyState !== EventSource.CLOSED && Date.now() - lastEvent > 45000) connect();
 }
@@ -1212,7 +1223,8 @@ async function start() {
     connect();
     setInterval(checkConnection, 5000);
     // Phones pause background tabs and switch networks; check the stream as soon as the page is back.
-    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { checkConnection(); scheduleReadReceipt(); } });
+    document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') { checkConnection(); scheduleReadReceipt(); checkForUpdate(); } });
+    setInterval(checkForUpdate, 15 * 60000);
     window.addEventListener('online', () => { if (stream) connect(); });
     setInterval(() => {
       let changed = false;

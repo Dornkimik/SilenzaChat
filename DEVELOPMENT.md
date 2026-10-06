@@ -40,7 +40,7 @@ cp .env.example .env   # optional – set ADMIN_USERNAME / ADMIN_PASSWORD here
 npm start
 ```
 
-Open http://localhost:3000. Restart the server after changing `server.mjs`, `lib/` or `.env`; just refresh the page after frontend edits. `SilenzaChat.sln` opens the project in Visual Studio (Node.js workload), but `npm start` is the reliable way to run it.
+Open http://localhost:3000. Restart the server after changing `server.mjs`, `lib/` or `.env`; just refresh the page after frontend edits. Pages link their scripts and styles as `/app.js?v=<content hash>`, so browsers and CDNs never mix old and new files and can cache unchanged ones for a year. Open chat tabs notice a newer version after reconnecting or when shown again, and offer a reload. `SilenzaChat.sln` opens the project in Visual Studio (Node.js workload), but `npm start` is the reliable way to run it.
 
 ### Admin account
 
