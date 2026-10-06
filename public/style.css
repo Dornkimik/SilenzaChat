@@ -613,6 +613,10 @@ dialog input, #emoji-search { border-radius: 7px; background: var(--side); }
 .age-field { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
 .settings-dialog .age-field input { width: 96px; padding: 9px 12px; font-size: 15px; text-align: center; }
 .age-field small, .settings-actions small { color: var(--muted); font-size: 12px; }
+.settings-dialog .chip-button { padding: 8px 16px; border: 1px solid var(--line); border-radius: 999px; background: var(--side); color: var(--text); font-size: 13px; transition: border-color .15s, background .15s, color .15s; }
+.settings-dialog .chip-button:hover { border-color: var(--muted); }
+.settings-dialog .chip-button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.settings-dialog .chip-button[aria-pressed="true"]::before { content: '✓ '; }
 .settings-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 16px; }
 .settings-dialog .primary.compact { width: auto; margin: 0; padding: 10px 22px; }
 .settings-dialog .settings-actions p { margin: 0; font-size: 13px; }

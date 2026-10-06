@@ -59,6 +59,7 @@ function applyPrivatePreferences(prefs) {
 }
 function renderBlockedUsers() {
   $('#blocked-count').textContent = blockedUsers.length || '';
+  $('#settings-tab-blocked').setAttribute('aria-label', blockedUsers.length ? `Blocked users, ${blockedUsers.length} blocked` : 'Blocked users');
   $('#blocked-users').replaceChildren(...blockedUsers.map(person => {
     const row = element('div', 'blocked-user'), button = element('button', 'text-button', 'Unblock');
     button.type = 'button'; button.setAttribute('aria-label', `Unblock ${person.alias}`);
@@ -292,6 +293,11 @@ function renderMessage(message) {
   row.id = `message-${message.id}`;
   if (message.removedBy === 'admin') {
     row.classList.add('removed-message');
+    if (me?.admin) {
+      const clear = element('button', 'message-remove', 'Remove'); clear.type = 'button'; clear.title = 'Remove this notice for everyone';
+      clear.onclick = async () => { clear.disabled = true; try { applyRemoval(await api('admin/remove-message', { id: message.id })); } catch(e) { error(e.message); clear.disabled = false; } };
+      meta.append(clear);
+    }
     content.append(meta, element('p', 'message-text removed-notice', own ? 'Your message was removed by an admin.' : 'This message was removed by an admin.'));
     row.append(avatar(message.alias, own), content); return row;
   }
@@ -1033,6 +1039,9 @@ function updateAppearance(person) {
 // Settings: an identity card that previews your profile, and one panel per section.
 const chosenGender = () => document.querySelector('input[name="profile-gender"]:checked')?.value || '';
 function previewProfile() {
+  // Like gender, age has an explicit "Not shown" choice: it is selected whenever the field is empty.
+  const hidden = !$('#profile-age').value && !$('#profile-age').validity.badInput;
+  $('#profile-age-hide').setAttribute('aria-pressed', String(hidden));
   const age = Number($('#profile-age').value);
   const draft = { gender: chosenGender(), age: Number.isInteger(age) && age >= 18 && age <= 99 ? age : null };
   $('#settings-preview').textContent = [me.account ? 'Persistent account' : 'Guest identity', profileText(draft)].filter(Boolean).join(' · ');
@@ -1044,6 +1053,7 @@ function fillProfileForm() {
   $('#account-guest-note').hidden = Boolean(me.account); previewProfile();
 }
 $('#profile-form').oninput = previewProfile;
+$('#profile-age-hide').onclick = () => { $('#profile-age').value = ''; previewProfile(); };
 let settingsTab = 'profile';
 function showSettingsTab(name, focus = false) {
   settingsTab = name;
@@ -1066,7 +1076,7 @@ for (const tab of document.querySelectorAll('.settings-nav [role="tab"]')) {
   };
 }
 $('#profile-form').onsubmit = async event => {
-  event.preventDefault(); const button = $('#profile-form button'); button.disabled = true; $('#profile-status').textContent = '';
+  event.preventDefault(); const button = $('#profile-form button[type="submit"]'); button.disabled = true; $('#profile-status').textContent = '';
   try {
     const age = $('#profile-age').value.trim();
     updateSession(await api('profile', { gender: chosenGender() || null, age: age ? Number(age) : null }));

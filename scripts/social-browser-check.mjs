@@ -43,9 +43,19 @@ try {
   // Profile: optional gender and age, visible next to the name for others.
   await a.locator('#open-settings').click();
   await a.locator('#profile-gender input[value="woman"]').check(); await a.locator('#profile-age').fill('29');
-  await a.locator('#profile-form button').click(); await a.locator('#profile-status').filter({ hasText: 'Profile saved' }).waitFor();
+  await a.locator('#profile-form button[type="submit"]').click(); await a.locator('#profile-status').filter({ hasText: 'Profile saved' }).waitFor();
   await a.locator('#settings-dialog .close-dialog').click();
   await b.locator('.person').filter({ hasText: ua.alias }).locator('.person-profile').filter({ hasText: '29 · Woman' }).waitFor();
+  // "Not shown" clears a saved age again.
+  await a.locator('#open-settings').click();
+  assert.equal(await a.locator('#profile-age-hide').getAttribute('aria-pressed'), 'false');
+  await a.locator('#profile-age-hide').click(); assert.equal(await a.locator('#profile-age').inputValue(), '');
+  assert.equal(await a.locator('#profile-age-hide').getAttribute('aria-pressed'), 'true');
+  await a.locator('#profile-form button[type="submit"]').click();
+  await b.locator('.person').filter({ hasText: ua.alias }).locator('.person-profile').filter({ hasText: /^Woman$/ }).waitFor();
+  await a.locator('#profile-age').fill('29'); await a.locator('#profile-form button[type="submit"]').click();
+  await b.locator('.person').filter({ hasText: ua.alias }).locator('.person-profile').filter({ hasText: '29 · Woman' }).waitFor();
+  await a.locator('#settings-dialog .close-dialog').click();
 
   // Read receipts: one check until the other person opens the chat, then two.
   await a.locator('.person').filter({ hasText: ub.alias }).click();
@@ -102,7 +112,11 @@ try {
   await b.locator('.removed-notice').filter({ hasText: 'Your message was removed by an admin.' }).waitFor();
   assert.equal(await a.getByText('Rude public message', { exact: true }).count(), 0);
   await a.reload(); await a.locator('.removed-notice').filter({ hasText: 'This message was removed by an admin.' }).waitFor();
+  await a.locator('#rooms .room-preview').filter({ hasText: 'Message removed by an admin' }).waitFor();
   if (shots) await a.screenshot({ path: path.join(shots, 'admin-removal.png') });
+  // An admin can clear the notice itself, which removes it for everyone.
+  await admin.locator('.removed-message .message-remove').click();
+  await a.locator('.removed-notice').waitFor({ state: 'detached' });
   assert.deepEqual(errors, []);
   console.log('PASS: profile gender/age shown to others, read receipts (and opting out), drag-and-drop attachments, image viewer, click-to-show images, admin removal notices');
 } finally {

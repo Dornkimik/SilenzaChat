@@ -129,7 +129,8 @@ function roomList() {
   // One pass over sessions for every room's head count, instead of one pass per room.
   const present = new Map();
   for (const s of sessions.values()) if (online(s)) { if (!present.has(s.room)) present.set(s.room, new Set()); present.get(s.room).add(presenceKey(s)); }
-  return allRooms().map(r => ({ ...r, preview: (r.persistent ? announcements.messages : histories.get(`room:${r.id}`) || []).at(-1)?.text?.slice(0, 100) || '', count: present.get(r.id)?.size || 0 }));
+  const previewOf = message => message?.removedBy ? 'Message removed by an admin' : message?.text?.slice(0, 100) || '';
+  return allRooms().map(r => ({ ...r, preview: previewOf((r.persistent ? announcements.messages : histories.get(`room:${r.id}`) || []).at(-1)), count: present.get(r.id)?.size || 0 }));
 }
 const publishRooms = throttled(() => broadcast('rooms', roomList()));
 const privatePreferences = s => ({
