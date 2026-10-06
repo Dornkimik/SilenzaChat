@@ -52,6 +52,12 @@ test('profiles, read receipts and room join requests work over HTTP', async () =
     const cleared = await request(a, 'profile', { gender: null, age: null });
     assert.equal(cleared.data.gender, undefined); assert.equal(cleared.data.age, undefined);
     assert.equal((await request(guest, 'profile', { gender: 'nonbinary' })).data.gender, 'nonbinary');
+    // Saving the same profile again is free; frequent changes are limited because each one is broadcast.
+    assert.equal((await request(guest, 'profile', { gender: 'nonbinary' })).status, 200);
+    const changes = [];
+    for (const age of [20, 21, 22, 23, 24]) changes.push((await request(guest, 'profile', { gender: 'nonbinary', age })).status);
+    assert.deepEqual(changes, [200, 200, 200, 200, 429]);
+    await request(guest, 'profile', { gender: 'nonbinary', age: 23 });
 
     // Read receipts: only the recipient can mark the peer's messages as seen.
     const first = (await dm(a, b)).data, second = (await dm(a, b)).data;

@@ -334,7 +334,7 @@ test('mutes, slow mode and staff-only posting are enforced by the server', () =>
 });
 
 test('discoverable rooms need an approved request; hidden rooms only invitations or links', () => {
-  const { store, users: [a,b,c,d], events, call } = setup();
+  const { store, users: [a,b,c,d], events, call, advance } = setup();
   const open = call(a, 'create', { name: 'Discoverable' }).id, hidden = call(a, 'create', { name: 'Hidden', access: 'invite' }).id;
   assert.throws(() => call(b, 'join', { group: open }), /Ask to join/);
   assert.throws(() => call(b, 'request', { group: hidden }), /invitation/);
@@ -347,6 +347,12 @@ test('discoverable rooms need an approved request; hidden rooms only invitations
   call(a, 'decline', { group: open, member: c.id });
   assert.ok(events.some(e => e.user === c.id && e.event === 'group-request' && e.data.approved === false));
   assert.throws(() => call(a, 'approve', { group: open, member: c.id }), /no longer pending/);
+  // A declined person waits before asking again, and asking or withdrawing too often is limited.
+  assert.throws(() => call(c, 'request', { group: open }), /declined/);
+  advance(10 * 60000 + 1);
+  for (let i = 0; i < 3; i++) { call(c, 'request', { group: open }); call(c, 'request-cancel', { group: open }); }
+  assert.throws(() => call(c, 'request', { group: open }), /Try again in a minute/);
+  advance(60001);
   call(a, 'approve', { group: open, member: b.id });
   assert.ok(events.some(e => e.user === b.id && e.event === 'group-request' && e.data.approved === true));
   assert.equal(call(b, 'state', { group: open }, 'GET').joined, true);

@@ -193,7 +193,7 @@ async function syncHistory(target, version) {
   const history = await Promise.all(list.map(m => {
     const local = known.get(m.id);
     // Public messages are plaintext, so the server copy is always current. Read times are server metadata.
-    return target.room ? m : unchanged(local, m) ? (local.readAt === m.readAt ? local : { ...local, readAt: m.readAt }) : decodePrivate(m);
+    return target.room ? m : unchanged(local, m) ? (!m.readAt || local.readAt === m.readAt ? local : { ...local, readAt: m.readAt }) : decodePrivate(m).then(decoded => ({ ...decoded, readAt: decoded.readAt || local?.readAt }));
   }));
   if (version !== revision) return;
   const ids = new Set(history.map(m => m.id));
@@ -379,7 +379,7 @@ async function receive(message) {
     if (needsAuthentication) {
       const decoded = await decodePrivate(message);
       if (version !== revision) return;
-      messages = messages.map(m => m.id === message.id && (m.editVersion || 0) === (message.editVersion || 0) ? { ...decoded, reply: m.reply } : m); renderMessages();
+      messages = messages.map(m => m.id === message.id && (m.editVersion || 0) === (message.editVersion || 0) ? { ...decoded, reply: m.reply, readAt: decoded.readAt || m.readAt } : m); renderMessages();
     }
     for (const id of new Set([...fileURLs.keys(), ...fileLoads.keys(), ...filePlayers.keys()])) if (!messages.some(m => m.id === id)) revokeFile(id);
   }
@@ -394,7 +394,7 @@ async function applyEdit(message) {
   messages = messages.map(m => m.id === message.id ? { ...message, text: 'Decrypting…', file: null, mentions: [], locked: true, reply: m.reply } : m);
   const decoded = await decodePrivate(message);
   if (version !== revision) return;
-  messages = messages.map(m => m.id === message.id && m.editVersion === message.editVersion ? { ...decoded, reply: m.reply } : m);
+  messages = messages.map(m => m.id === message.id && m.editVersion === message.editVersion ? { ...decoded, reply: m.reply, readAt: decoded.readAt || m.readAt } : m);
   const latest = messages.find(m => m.id === message.id);
   if (!latest || latest.editVersion !== message.editVersion) return;
   if (message.room) messages = messages.map(reply => reply.reply?.id === message.id ? { ...reply, reply: { ...reply.reply, text: message.text.slice(0, 200) } } : reply);
@@ -523,7 +523,8 @@ $('.app > main').addEventListener('drop', event => {
   if (files.length > 1) status('Only the first file was attached. Send it, then add the next one.');
 });
 // A file dropped outside the chat must not make the browser leave the page to open it.
-for (const type of ['dragover', 'drop']) window.addEventListener(type, event => { if (draggingFiles(event)) event.preventDefault(); });
+for (const type of ['dragover', 'drop']) window.addEventListener(type, event => { if (draggingFiles(event)) event.preventDefault(); if (type === 'drop') showDropZone(false); });
+window.addEventListener('dragend', () => showDropZone(false));
 async function attachFile(file) {
   if (!file || (!current?.peer && !current?.group)) return;
   clearPendingFile(); const version = fileRevision;
@@ -660,7 +661,7 @@ function renderAttachment(message, content) {
   content.append(downloadProgressBox(message.id));
   if (file.kind === 'image') {
     // With "Show images only when I click them" on, nothing is downloaded until the image is asked for.
-    if (mediaSettings.clickToShow && !fileURLs.has(message.id) && !fileLoads.has(message.id)) {
+    if (mediaSettings.clickToShow && message.sender !== me.id && !fileURLs.has(message.id) && !fileLoads.has(message.id)) {
       const reveal = element('button', 'attachment-button image-reveal', 'Show image'); reveal.type = 'button';
       reveal.onclick = () => { reveal.remove(); showImage(message, content, note); };
       content.append(reveal); return;
@@ -1105,8 +1106,10 @@ function connect() {
   stream.addEventListener('group-state', event => groupStateChanged(JSON.parse(event.data)));
   stream.addEventListener('group-request', event => {
     const { group, name, approved } = JSON.parse(event.data);
+    const waiting = groupPanel?.id === group && !groupPanel.joined && $('#group-dialog').open;
     if (groupPanel?.id === group && !groupPanel.joined) { $('#group-dialog').close(); groupPanel = null; }
-    if (approved) { status(`Your request to join “${name}” was approved.`); refreshGroups().then(() => select({ group })); }
+    if (approved && waiting) refreshGroups().then(() => select({ group }));
+    else if (approved) { status(`Your request to join “${name}” was approved. Open it under Temporary rooms.`); refreshGroups(); }
     else { status(`Your request to join “${name}” was declined.`); refreshGroups(); }
   });
   stream.addEventListener('history-shared', event => { const { group } = JSON.parse(event.data); if (current?.group === group) loadSharedHistory(group); });

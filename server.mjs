@@ -433,6 +433,10 @@ const server = http.createServer(async (req, res) => {
       if (input.gender != null && input.gender !== '' && !GENDERS.includes(input.gender)) fail(400, 'Choose one of the listed genders, or leave it empty.');
       if (input.age != null && (!Number.isInteger(input.age) || input.age < 18 || input.age > 99)) fail(400, 'Enter an age between 18 and 99, or leave it empty.');
       const profile = profileOf(input);
+      if (JSON.stringify(profileOf(session)) === JSON.stringify(profile)) { json(publicSession(session)); return; }
+      session.profileSaves = (session.profileSaves || []).filter(t => Date.now() - t < 60000);
+      if (session.profileSaves.length >= 5) fail(429, 'You changed your profile several times. Try again in a minute.');
+      session.profileSaves.push(Date.now());
       // An account keeps its profile across logins; a guest's lasts for the session.
       if (session.accountId) await accounts.save(items => items.map(a => {
         if (a.id !== session.accountId) return a;
