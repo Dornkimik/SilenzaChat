@@ -50,6 +50,7 @@ test('static files are compressed and revalidate with ETags, keeping security he
     const etag = first.headers.get('etag'); assert.match(etag, /^"[A-Za-z0-9_-]+"$/);
     const again = await fetch(`${local}/app.js`, { headers: { 'If-None-Match': etag } });
     assert.equal(again.status, 304); assert.equal(await again.text(), '');
+    assert.equal((await fetch(`${local}/app.js`, { headers: { 'If-None-Match': `"other", W/${etag}` } })).status, 304);
     assert.equal(again.headers.get('x-content-type-options'), 'nosniff');
     assert.match(again.headers.get('content-security-policy'), /default-src 'self'/);
     const other = await fetch(`${local}/style.css`, { headers: { 'If-None-Match': etag } });

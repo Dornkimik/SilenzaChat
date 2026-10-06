@@ -235,6 +235,8 @@ async function staticAsset(file) {
 const staticFiles = { '/': ['about.html', 'text/html'], '/chat/': ['index.html', 'text/html'], '/robots.txt': ['robots.txt', 'text/plain'], '/sitemap.xml': ['sitemap.xml', 'application/xml'], '/about.css': ['about.css', 'text/css'], '/feedback.js': ['feedback.js', 'text/javascript'], '/auth.js': ['auth.js', 'text/javascript'], '/app.js': ['app.js', 'text/javascript'], '/groups.js': ['groups.js', 'text/javascript'], '/crypto.js': ['crypto.js', 'text/javascript'], '/attachments.js': ['attachments.js', 'text/javascript'], '/vendor/nacl.js': ['../node_modules/tweetnacl/nacl-fast.min.js', 'text/javascript'], '/theme.js': ['theme.js', 'text/javascript'], '/style.css': ['style.css', 'text/css'], '/favicon.svg': ['favicon.svg', 'image/svg+xml'] };
 const publicAsset = route => staticAsset(path.join(root, 'public', staticFiles[route][0]));
 const assetVersion = asset => asset.etag.slice(1, 13);
+// CDNs such as Cloudflare weaken ETags (W/"…") when they compress, and If-None-Match may list several.
+const etagMatches = (header, etag) => String(header || '').split(',').some(tag => tag.trim().replace(/^W\//, '') === etag);
 // Pages link their scripts and styles with a content version (/app.js?v=…), so a browser, proxy or
 // CDN can never combine a new page with old code. A changed file gets a new URL; an unchanged one
 // may be cached for a year. The page also carries a build ID that open tabs use to notice updates.
@@ -272,7 +274,7 @@ const server = http.createServer(async (req, res) => {
       // A URL carrying the file's current version never changes, so it is cached for a year.
       const immutable = !page && url.searchParams.get('v') === assetVersion(asset);
       const headers = { 'Content-Type': type, 'Cache-Control': immutable ? 'public, max-age=31536000, immutable' : 'no-cache', ETag: asset.etag, Vary: 'Accept-Encoding' };
-      if (req.headers['if-none-match'] === asset.etag) { res.writeHead(304, headers); res.end(); return; }
+      if (etagMatches(req.headers['if-none-match'], asset.etag)) { res.writeHead(304, headers); res.end(); return; }
       const gzip = /\bgzip\b/.test(req.headers['accept-encoding'] || '');
       res.writeHead(200, gzip ? { ...headers, 'Content-Encoding': 'gzip' } : headers); res.end(gzip ? asset.gzip : asset.bytes); return;
     }
