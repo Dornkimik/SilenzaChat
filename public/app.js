@@ -991,6 +991,18 @@ $('#emoji-picker').onkeydown = event => { if (event.key === 'Escape') { toggleEm
 document.addEventListener('click', event => { if (!event.target.closest('.composer-wrap')) { closeSuggestions(); toggleEmoji(false); } });
 for (const close of document.querySelectorAll('.close-dialog')) close.onclick = () => close.closest('dialog').close();
 $('#privacy-button').onclick = $('#faq-button').onclick = () => $('#privacy-dialog').showModal();
+const topbarActions = $('.topbar-actions'), moreMenu = $('.topbar-more'), moreToggle = $('#more-toggle'), phoneLayout = matchMedia('(max-width: 600px)');
+function toggleMoreMenu(open) { moreMenu.classList.toggle('open', open); moreToggle.setAttribute('aria-expanded', String(open)); }
+function placeTopbarActions() {
+  toggleMoreMenu(false);
+  if (phoneLayout.matches) $('.brand').after(topbarActions); else $('.topbar').append(topbarActions);
+}
+placeTopbarActions();
+phoneLayout.addEventListener('change', placeTopbarActions);
+moreToggle.onclick = () => toggleMoreMenu(!moreMenu.classList.contains('open'));
+$('#topbar-links').addEventListener('click', event => { if (event.target.closest('.faq-link')) toggleMoreMenu(false); });
+document.addEventListener('click', event => { if (!event.target.closest('.topbar-more')) toggleMoreMenu(false); });
+moreMenu.addEventListener('keydown', event => { if (event.key === 'Escape' && moreMenu.classList.contains('open')) { toggleMoreMenu(false); moreToggle.focus(); } });
 $('#open-admin').onclick = () => { $('#admin-error').textContent = ''; $('#admin-dialog').showModal(); refreshFeedback(); refreshAdminState(); };
 let feedbackRequest = 0;
 async function refreshFeedback() {

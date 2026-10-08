@@ -6,8 +6,9 @@ import vm from 'node:vm';
 // A small DOM double exercises composer state and event handlers without dependencies.
 async function composer() {
   class Node {
-    constructor() { this.value = ''; this.children = []; this.style = {}; this.attributes = {}; this.hidden = true; this.selectionStart = this.selectionEnd = 0; this.maxLength = 2000; this.scrollHeight = 38; }
+    constructor() { this.value = ''; this.children = []; this.style = {}; this.attributes = {}; this.hidden = true; this.selectionStart = this.selectionEnd = 0; this.maxLength = 2000; this.scrollHeight = 38; this.classList = { toggle() {}, contains: () => false }; }
     append(...nodes) { this.children.push(...nodes); }
+    after() {}
     replaceChildren(...nodes) { this.children = nodes; }
     setAttribute(key, value) { this.attributes[key] = value; }
     removeAttribute(key) { delete this.attributes[key]; }
@@ -20,7 +21,7 @@ async function composer() {
   const context = vm.createContext({
     document: { querySelector: node, querySelectorAll: () => [], createElement: () => new Node(), createTextNode: text => ({ textContent: text }), addEventListener() {} },
     fetch: (url, options) => { calls.push({ url, options }); return new Promise(() => {}); }, URLSearchParams,
-    window: { addEventListener() {} }
+    window: { addEventListener() {} }, matchMedia: () => ({ matches: false, addEventListener() {} })
   });
   vm.runInContext(await readFile(new URL('../public/groups.js', import.meta.url), 'utf8'), context);
   vm.runInContext(await readFile(new URL('../public/app.js', import.meta.url), 'utf8'), context);
