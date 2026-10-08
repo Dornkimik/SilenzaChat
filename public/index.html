@@ -133,6 +133,7 @@
   <dialog id="group-dialog" aria-labelledby="group-dialog-title">
     <div class="dialog-heading"><h2 id="group-dialog-title">Create a temporary room</h2><button class="close-dialog" type="button" aria-label="Close room details">×</button></div>
     <p class="group-hint">End-to-end encrypted messages and attachments for up to 20 members. Rooms expire after a period without activity chosen by the owner (24 hours at most) or when the server restarts. New members see only messages sent after they join, unless the owner turns on history sharing.</p>
+    <section id="group-requests-section" class="group-requests-section" hidden><h3>Join requests <span id="group-requests-count" class="request-count"></span></h3><p class="group-hint">These people are waiting for you or a moderator. Approved people join right away and see only messages sent from then on, unless history sharing is on.</p><div id="group-requests"></div></section>
     <form id="group-form">
       <label for="group-name">Room name</label><input id="group-name" maxlength="40" required>
       <label for="group-description">Description <span>(optional)</span></label><input id="group-description" maxlength="120">
@@ -153,7 +154,6 @@
       <button id="group-save" class="primary" type="submit">Create room</button>
     </form>
     <button id="group-join" class="primary" type="button" hidden>Ask to join</button><p id="group-request-note" class="group-hint" hidden></p>
-    <section id="group-requests-section" hidden><h3>Join requests</h3><p class="group-hint">Approved people join right away and see only messages sent from then on, unless history sharing is on.</p><div id="group-requests"></div></section>
     <form id="group-invite-form" hidden><label for="group-invite-person">Invite someone online</label><div class="group-invite"><select id="group-invite-person" aria-label="Person to invite"></select><button id="group-invite-submit" class="text-button" type="submit">Invite</button></div></form>
     <section id="group-links-section" hidden><h3>Invite links</h3><p class="group-hint">Anyone with an active link joins directly, without a request, even in a hidden room. Banned people cannot use links, and a locked or full room stays closed.</p>
       <form id="group-link-form" class="group-invite"><select id="group-link-hours" aria-label="Link expires after"><option value="1">Expires in 1 hour</option><option value="6">Expires in 6 hours</option><option value="24" selected>Expires in 24 hours</option></select><select id="group-link-uses" aria-label="Link use limit"><option value="1">1 use</option><option value="5">5 uses</option><option value="20">20 uses</option><option value="0" selected>No use limit</option></select><button class="text-button" type="submit">Create link</button></form>

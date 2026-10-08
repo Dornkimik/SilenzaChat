@@ -107,7 +107,7 @@ function groupStateChanged(state) {
   if (state.joinRequests) {
     const known = knownRequests.get(state.id), fresh = known ? state.joinRequests.filter(r => !known.has(r.id)) : [];
     knownRequests.set(state.id, new Set(state.joinRequests.map(r => r.id)));
-    if (fresh.length) status(`${fresh.at(-1).alias} asked to join “${state.name}”. Open Room details & members to approve or decline.`);
+    if (fresh.length) status(`${fresh.at(-1).alias} asked to join “${state.name}”. Open the room and choose “${state.joinRequests.length === 1 ? '1 join request' : `${state.joinRequests.length} join requests`}” to approve or decline.`);
   }
   if (index !== -1) groupRooms[index] = { ...groupRooms[index], ...state };
   if (current?.group === state.id && groupState && Boolean(groupState.shareHistory) !== Boolean(state.shareHistory)) {
@@ -133,7 +133,7 @@ async function openGroup(group = null) {
     groupPanel = group?.joined ? await api(`groups/state?group=${encodeURIComponent(group.id)}`) : group;
     fillGroupForm(groupPanel);
     $('#group-dialog-title').textContent = groupPanel ? 'Room details & members' : 'Create a temporary room';
-    groupPermissions(); renderGroupMembers(); if (!$('#group-dialog').open) $('#group-dialog').showModal();
+    groupPermissions(); renderGroupMembers(); if (!$('#group-dialog').open) { $('#group-dialog').showModal(); $('#group-dialog').scrollTop = 0; }
   } catch(e) { error(e.message); }
 }
 function groupPermissions() {
@@ -149,6 +149,7 @@ function groupPermissions() {
   $('#group-request-note').hidden = creating || groupPanel.joined || Boolean(groupPanel.inviteToken || groupPanel.invited);
   $('#group-request-note').textContent = groupPanel?.requested ? 'Your request is waiting for the owner or a moderator. You join automatically once it is approved.' : 'The owner or a moderator decides who joins. You join automatically once your request is approved.';
   $('#group-requests-section').hidden = !staff || !groupPanel.joinRequests?.length;
+  $('#group-requests-count').textContent = groupPanel?.joinRequests?.length || '';
   $('#group-leave').hidden = !groupPanel?.joined;
   $('#group-leave').disabled = owner && groupPanel.count > 1;
   $('#group-delete').hidden = !owner;

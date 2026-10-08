@@ -138,6 +138,10 @@ function updateHeading() {
   $('#block-private-user').hidden = !privateChat;
   $('#group-details').hidden = !groupChat;
   $('#group-details').disabled = !groupState;
+  // Pending join requests sit inside the details dialog, so the button says when someone is waiting.
+  const waiting = groupChat ? groupState?.joinRequests?.length || 0 : 0;
+  $('#group-details').textContent = waiting ? `${waiting} join ${waiting === 1 ? 'request' : 'requests'} · Room details` : 'Room details & members';
+  $('#group-details').classList.toggle('has-requests', waiting > 0);
   $('#room-rules').hidden = !groupChat || !room?.rules;
   $('#room-rules p').textContent = groupChat && room?.rules ? room.rules : '';
   $('#message').placeholder = room?.adminOnly ? (me.admin ? 'Write an announcement…' : 'Only admins can post announcements') : groupChat ? 'Message this room…' : privateChat ? 'Say something, just to them…' : 'Leave a little thought…';

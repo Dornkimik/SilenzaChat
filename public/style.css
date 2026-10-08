@@ -455,6 +455,10 @@ dialog input, #emoji-search { border-radius: 7px; background: var(--side); }
 .group-link small { flex-basis: 100%; color: var(--muted); }
 #group-link-form select { flex: 1; }
 #group-details { margin-left: auto; }
+.group-requests-section { margin: 16px 0 8px; padding: 4px 16px 6px; border: 1px solid var(--accent); border-radius: 8px; background: var(--accent-soft); }
+.group-requests-section h3 { display: flex; align-items: center; gap: 8px; }
+.request-count { min-width: 22px; padding: 2px 7px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); font-size: 12px; text-align: center; }
+.group-chat #group-details.has-requests { border-color: var(--accent); background: var(--accent); color: var(--accent-ink); font-weight: 600; }
 #room-rules { flex-shrink: 0; margin: 0; padding: 12px 32px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; }
 #room-rules summary { width: fit-content; cursor: pointer; color: var(--text); }
 #room-rules summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
