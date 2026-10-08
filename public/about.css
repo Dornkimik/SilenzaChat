@@ -15,6 +15,7 @@
 .about-main p, .about-steps { color: var(--muted); font-size: 15px; line-height: 1.8; }
 .about-main p { margin: 0 0 16px; }
 .about-main .about-lead { max-width: 510px; font-size: 18px; }
+.about-main h1 .about-eyebrow { line-height: 1.8; }
 .about-main .about-eyebrow, .entry-label { display: block; margin-bottom: 18px; color: var(--accent); font-size: 11px; font-weight: 700; letter-spacing: 1.7px; }
 .about-main section { margin-top: 64px; }
 .about-main .entry-gateway { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); align-items: start; gap: 28px 64px; margin-top: 0; padding-bottom: 64px; border-bottom: 1px solid var(--line); }
