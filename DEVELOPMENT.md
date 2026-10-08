@@ -91,7 +91,7 @@ You need a host that runs a long-lived Node.js process (static hosting won't wor
 3. Install with `npm ci --omit=dev` and start with `npm start`.
 4. Serve over HTTPS (required for private chats) and configure your reverse proxy to:
    - stream `/api/events` without buffering, with a timeout above the 20-second heartbeat;
-   - accept request bodies up to `ATTACHMENT_MAX_MB` (uploads must finish within 60 s);
+   - accept request bodies up to `ATTACHMENT_MAX_MB` (uploads must finish within 3 minutes, so allow at least that long);
    - append or sanitize `X-Forwarded-For` (or your `CLIENT_IP_HEADER`) and block direct access to the app.
 5. Set `TRUSTED_PROXY_ADDRESSES` to **only** your real ingress networks. Without it, forwarding headers are ignored and every visitor behind the proxy shares one rate-limit bucket. Never trust all addresses.
 

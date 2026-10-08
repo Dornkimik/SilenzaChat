@@ -344,7 +344,7 @@ const server = http.createServer(async (req, res) => {
       }
       session.seen = Date.now();
       const conversations = [...sessions.values()].filter(s => s.id !== session.id && histories.has(keyFor(session, null, s.id)) && !session.hiddenChats?.has(s.id) && !blocks.between(session, s)).map(safeUser);
-      json({ me: publicSession(session), attachmentLimit: attachments.maxItem, rooms: roomList(), groups: groups.list(session), people: onlinePeople(session), conversations, ...privatePreferences(session) }); return;
+      json({ me: publicSession(session), attachmentLimit: attachments.maxItem, attachmentLifetime: attachments.ttl, rooms: roomList(), groups: groups.list(session), people: onlinePeople(session), conversations, ...privatePreferences(session) }); return;
     }
     if (!session) fail(401, 'Your anonymous session expired. Refresh to rejoin.');
     session.seen = Date.now();
@@ -763,7 +763,7 @@ const server = http.createServer(async (req, res) => {
 });
 // Slow request bodies cannot hold upload reservations or sockets for Node's 5-minute default.
 // (Event streams are unaffected: these limits apply only while the request itself is received.)
-server.requestTimeout = 60000;
+server.requestTimeout = 180000; // Three minutes lets a maximum-size attachment finish on a slower connection.
 server.headersTimeout = 20000;
 setInterval(() => {
   // Sessions that never opened the chat stream (abandoned or scripted) expire after 10 minutes.

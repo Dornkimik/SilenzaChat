@@ -4,6 +4,8 @@ let editingMessage, editSaving = false, signingOut = false;
 let replying, sending = false, suggestions = [], suggestionIndex = 0, completionStart = 0;
 let encryptionClient, encryptionError = '', peerIdentity, pendingFile, filePreparing = false, fileRevision = 0, verificationTarget;
 let attachmentLimit = 16 * 1024 * 1024;
+let attachmentLifetime = 86400000;
+const lifetimeText = ms => { const minutes = Math.max(1, Math.round(ms / 60000)), hours = minutes / 60; return Number.isInteger(hours) ? `${hours} hour${hours === 1 ? '' : 's'}` : `${minutes} minute${minutes === 1 ? '' : 's'}`; };
 const fileURLs = new Map(), fileLoads = new Map(), filePlayers = new Map();
 const fileKinds = { image: 'Image', video: 'Video', audio: 'Audio', file: 'File' };
 let blockedUsers = [], hiddenChats = new Set();
@@ -554,7 +556,7 @@ async function attachFile(file) {
     $('#attachment-preview .attachment-thumb').replaceWith(thumb);
     $('#attachment-preview .attachment-detail').textContent = pendingFile.kind === 'file'
       ? `${pendingFile.name} · ${formatBytes(pendingFile.size)} · Encrypted before upload. Sent as-is: details stored inside the file are not removed.`
-      : `${fileKinds[pendingFile.kind]} · ${formatBytes(pendingFile.size)} · Metadata removed and encrypted before upload · expires within 24 hours`;
+      : `${fileKinds[pendingFile.kind]} · ${formatBytes(pendingFile.size)} · Metadata removed and encrypted before upload · expires within ${lifetimeText(attachmentLifetime)}`;
     $('#attachment-preview').hidden = false;
     preuploadPendingFile(pendingFile);
   } catch(e) { if (version === fileRevision) error(e.tooLarge ? `${e.message} Attachments can be up to ${formatBytes(attachmentLimit - 16)}.` : e.message); }
@@ -1224,7 +1226,7 @@ async function start() {
       if (location.hash.startsWith('#invite=')) try { sessionStorage.setItem('silenza-invite', location.hash); } catch {}
       location.replace('/#entry'); return;
     }
-    const data = await api('session'); me = data.me; rooms = data.rooms; if (Number.isSafeInteger(data.attachmentLimit)) attachmentLimit = data.attachmentLimit; people = data.people; blockedUsers = data.blocks || []; hiddenChats = new Set(data.hiddenChats || []); renderBlockedUsers(); groupRooms = data.groups || [];
+    const data = await api('session'); me = data.me; rooms = data.rooms; if (Number.isSafeInteger(data.attachmentLimit)) attachmentLimit = data.attachmentLimit; if (Number.isSafeInteger(data.attachmentLifetime) && data.attachmentLifetime > 0) attachmentLifetime = data.attachmentLifetime; people = data.people; blockedUsers = data.blocks || []; hiddenChats = new Set(data.hiddenChats || []); renderBlockedUsers(); groupRooms = data.groups || [];
     $('#identity-kind').textContent = me.account ? 'Persistent account' : 'Guest identity'; $('#account-security').hidden = !me.account; fillProfileForm();
     try { encryptionClient = await SilenzaCrypto.createClient(me.id, api); } catch(e) { encryptionError = e.message; }
     for (const person of data.conversations || []) conversations.set(person.id, person.alias);
