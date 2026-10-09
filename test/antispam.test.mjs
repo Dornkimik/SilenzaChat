@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { once } from 'node:events';
-import { AntiSpam, fold, obfuscation, destinations, randomToken, signature, similarity } from '../lib/antispam.mjs';
+import { AntiSpam, advertisesContact, fold, obfuscation, destinations, randomToken, signature, similarity } from '../lib/antispam.mjs';
 
 test('disguised text folds to the same skeleton', () => {
   const plain = fold('free crypto').skeleton;
@@ -22,7 +22,7 @@ test('destinations are found in their disguised forms', () => {
     'join t.me/cryptoclub': 'invite', 'discord gg/abcdef': 'invite', 'https://x.y': 'link', 'hxxps :// thing': 'link', 'www . thing': 'link',
     'call +1 555 123 4567': 'phone', 'wallet 0x52908400098527886E0F7030069857D2E4169EE7': 'wallet', 'btc bc1qar0srrr7xfkvy5l643lydnw9re59gtzzwf5mdq': 'wallet' };
   for (const [text, kind] of Object.entries(cases)) assert.ok(destinations(text).strong.includes(kind), `${text} → ${kind}`);
-  assert.equal(destinations('add me on snap @bob123').weak, true);
+  assert.ok(destinations('add me on snap @bob123').strong.includes('handle'));
   assert.equal(destinations('dm me on insta').weak, true);
   // Random-looking codes are contact details when glued onto or right after a messaging app.
   for (const text of ['such TgrD__RMQDc4FQF', 'tg: rD__RMQDc4FQF', 'telegram rD__RMQDc4FQF', 'snap_xK7qPz9mW']) assert.ok(destinations(text).strong.includes('handle'), text);
@@ -33,13 +33,13 @@ test('destinations are found in their disguised forms', () => {
 test('teasers with heavy disguises and app codes are muted, while the same tricks used lightly are not', () => {
   const fresh = text => { const spam = new AntiSpam(); return spam.review({ id: 'x', alias: 'guest', clientKey: 'k', connectedAt: Date.now() }, text, { id: 'm', established: false }); };
   const teaser = "I'hav G0t(h0t🔥Content and filz Lnkz F0lderz such";
-  // On its own the teaser is suspicious but goes nowhere, so it needs one more signal before muting.
-  assert.equal(fresh(teaser).action, 'allow');
-  assert.ok(fresh(teaser).score >= 5, fresh(teaser).reasons.join('; '));
+  // Heavy disguise plus a few selling words is enough for a new visitor, even without a contact.
+  assert.equal(fresh(teaser).action, 'shadow');
+  assert.equal(fresh("I'hav G0t(h0t🔥 and filz Lnkz F0lderz such").action, 'allow');
   assert.equal(fresh(`${teaser} TgrD__RMQDc4FQF`).action, 'shadow');
   assert.equal(fresh('Hеy cutie, add me on snap @bob123 😘').action, 'shadow');
   for (const text of ['gg2 lol', 'l33t h4x0r here', 'my iPhone13 and Win10 laptop', 'friend(s) are coming', 'love❤️you', 'McDonalds tonight?',
-    'the WiFi password is Kx7mQ2pZ', 'my discord is cool_cat_99', 'add me on snap if you want', 'commit 3f2a9b1c4d broke it', 'f(x) = 2x', 'what a g00d day']) {
+    'the WiFi password is Kx7mQ2pZ', 'my discord is down again', 'oh snap, if you want', 'commit 3f2a9b1c4d broke it', 'f(x) = 2x', 'what a g00d day']) {
     const verdict = fresh(text);
     assert.equal(verdict.action, 'allow', text); assert.ok(verdict.score <= 3, `${text}: ${verdict.reasons}`);
   }
@@ -69,6 +69,37 @@ test('near-duplicates survive padding and disguises', () => {
   const base = signature(fold('Earn five hundred dollars a day working from home, message me now').skeleton);
   assert.ok(similarity(base, signature(fold('xq7 €arn fiv3 hundr3d dollars a day w0rking from h0me, message me now 9kz').skeleton)) >= 0.5);
   assert.ok(similarity(base, signature(fold('Did anyone watch the football game last night? It was great').skeleton)) < 0.2);
+});
+
+test('Telegram and TeleGuard contacts are found however they are written', () => {
+  for (const text of ['telegram: hotanna', 'my tele is anna_xx', 'T3l3gr@m @annahot', 'teIegram annahot99', 'T e l e g r a m: annahot', 'tg anna_hot', '✈️ @annahot',
+    'TeleGuard ID: 5KJ2HAQRT', 'teleguard 5KJ 2HA QRT', 'Telegram➡️annahot', 'telegram 👉 annahot', 'telegramAnna_hot', 'tele: annahot', 'TG_annahot', 'mein telegram ist anna_99']) {
+    assert.ok(destinations(text).strong.includes('handle'), text);
+  }
+  for (const text of ['add me on TG', 'add me on teleguard', 'schreib mir auf telegram']) assert.equal(destinations(text).ask, true, text);
+  for (const text of ['I watched it on the tele', 'telegraph road', 'teletubbies lol', 'TGIF everyone', 'what is teleguard?', 'tgif_fan here', 'the signal was weak', 'oh snap']) {
+    assert.deepEqual(destinations(text), { strong: [], weak: false }, text);
+  }
+});
+
+test('offers of explicit content with a way to reach the seller are muted even for established visitors', () => {
+  const verdict = (text, established) => new AntiSpam().review({ id: 'x', alias: 'guest', clientKey: 'k', connectedAt: 0 }, text, { id: 'm', established });
+  for (const text of ['selling my content, telegram: hotanna', 'Selling custom pics & vids, menu on tele @annahot 🍑', 'n00ds and v1ds 🔞 on TG anna_hot']) {
+    assert.equal(verdict(text, true).action, 'shadow', text);
+  }
+  assert.equal(verdict('nudes and vids 🔞 dm me', false).action, 'shadow');
+  // A contact on its own is fine for established visitors and rejected (with an explanation) for new ones.
+  assert.equal(verdict('tg anna_hot', true).action, 'allow');
+  assert.equal(verdict('tg anna_hot', false).action, 'reject');
+  assert.equal(verdict('add me on telegram', false).action, 'reject');
+  for (const text of ['hot weather today', 'I love content creators', 'pics or it didnt happen', 'send the folder later', 'my telegram is down today', 'the menu prices went up']) {
+    assert.equal(verdict(text, false).action, 'allow', text);
+  }
+});
+
+test('usernames cannot advertise a messaging app', () => {
+  for (const name of ['TG_annahot', 'telegram_anna', 'T3l3gramAnna', 'teleguard5KJ2', 'annas_onlyfans', 'snapchat_hot']) assert.equal(advertisesContact(name), true, name);
+  for (const name of ['tgif_fan', 'telescope', 'Teletubby', 'anna_99', 'instant_noodle', 'snapdragon']) assert.equal(advertisesContact(name), false, name);
 });
 
 function harness(probation = 180000) {

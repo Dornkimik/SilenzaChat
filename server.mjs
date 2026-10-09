@@ -13,7 +13,7 @@ import { Announcements, announcementRoom } from './lib/announcements.mjs';
 import { Security, sessionCapacity, validateOrigin, trustedProxyList } from './lib/security.mjs';
 import { Histories } from './lib/histories.mjs';
 import { randomAlias } from './lib/aliases.mjs';
-import { AntiSpam } from './lib/antispam.mjs';
+import { AntiSpam, advertisesContact } from './lib/antispam.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const configuredOrigin = validateOrigin(process.env.ORIGIN, process.env.NODE_ENV === 'production' || Boolean(process.env.RAILWAY_ENVIRONMENT_ID));
@@ -309,6 +309,7 @@ const server = http.createServer(async (req, res) => {
       if (session?.accountId && url.pathname.endsWith('/register')) fail(409, 'Sign out before creating another account.');
       if (url.pathname.endsWith('/register')) {
         if (security.clientBanned(clientKey)) fail(403, 'New accounts cannot be created from this network right now.');
+        if (advertisesContact(input.username)) fail(400, 'Choose a username that does not mention a messaging app or account.');
         security.register(clientKey);
       }
       const account = url.pathname.endsWith('/register') ? await accounts.create(input.username, input.password, 'member', clientKey) : await accounts.authenticate(input.username, input.password, clientKey);
