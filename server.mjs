@@ -13,6 +13,7 @@ import { Announcements, announcementRoom } from './lib/announcements.mjs';
 import { Security, sessionCapacity, validateOrigin, trustedProxyList } from './lib/security.mjs';
 import { Histories } from './lib/histories.mjs';
 import { randomAlias } from './lib/aliases.mjs';
+import { AntiSpam } from './lib/antispam.mjs';
 
 const root = path.dirname(fileURLToPath(import.meta.url));
 const configuredOrigin = validateOrigin(process.env.ORIGIN, process.env.NODE_ENV === 'production' || Boolean(process.env.RAILWAY_ENVIRONMENT_ID));
@@ -49,6 +50,10 @@ if (!Number.isFinite(attachmentStorage) || attachmentStorage < 16 * 1024 * 1024)
 const attachmentMax = Number(process.env.ATTACHMENT_MAX_MB || 16) * 1024 * 1024;
 if (!Number.isSafeInteger(attachmentMax) || attachmentMax < 1024 * 1024 || attachmentMax > 64 * 1024 * 1024) throw new Error('ATTACHMENT_MAX_MB must be a whole number between 1 and 64.');
 if (attachmentStorage < attachmentMax) throw new Error('ATTACHMENT_STORAGE_MB must be at least ATTACHMENT_MAX_MB.');
+const probationSeconds = Number(process.env.NEW_VISITOR_PROBATION_SECONDS ?? 180);
+if (!Number.isFinite(probationSeconds) || probationSeconds < 0 || probationSeconds > 3600) throw new Error('NEW_VISITOR_PROBATION_SECONDS must be between 0 and 3600.');
+// Logs only the alias, score and reasons of muted senders, never message text.
+const antispam = new AntiSpam({ probation: probationSeconds * 1000, log: ({ alias, score, reasons }) => console.log(`Anti-spam muted ${alias} (score ${score}: ${reasons.join('; ')})`) });
 const attachments = new Attachments({ ttl: attachmentTTL, maxBytes: attachmentStorage, maxItem: attachmentMax });
 // Sessions are keyed by their secret cookie token and also indexed by public ID, so looking up
 // a peer costs O(1) instead of scanning every session on each request.
@@ -81,6 +86,7 @@ if (process.env.ADMIN_USERNAME && process.env.ADMIN_PASSWORD && !accounts.items.
   await accounts.create(process.env.ADMIN_USERNAME, process.env.ADMIN_PASSWORD, 'admin');
 }
 const isAdmin = s => accounts.get(s.accountId)?.role === 'admin';
+const established = s => isAdmin(s) || antispam.established(s, accounts.get(s.accountId));
 const hash = value => createHash('sha256').update(value).digest();
 // Guest aliases must not match anyone online or any registered username.
 const aliasTaken = alias => { const lower = alias.toLowerCase();
@@ -402,7 +408,7 @@ const server = http.createServer(async (req, res) => {
       const clientStreams = [...streamClients.values()].filter(key => key === clientKey).length;
       if (streamClients.size >= 2000 || clientStreams >= 30) fail(429, 'Too many active connections. Try again shortly.');
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-store', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
-      res.write('retry: 3000\n: connected\n\n'); session.connected = true; session.streams.add(res); streamClients.set(res, clientKey); onlineCount = streamClients.size;
+      res.write('retry: 3000\n: connected\n\n'); session.connected = true; session.connectedAt ??= Date.now(); session.streams.add(res); streamClients.set(res, clientKey); onlineCount = streamClients.size;
       // The new stream gets an immediate, current snapshot; everyone else gets the coalesced fan-out.
       emit(session, 'people', onlinePeople(session)); emit(session, 'rooms', roomList()); presence(); publishRooms(); emit(session, 'groups-changed', {});
       // A named event rather than a comment, so the browser can notice a connection that silently stopped delivering.
@@ -479,7 +485,7 @@ const server = http.createServer(async (req, res) => {
       if (!input.blocked && !existing) fail(404, 'Blocked user not found.');
       if (input.blocked && blocks.list(session).length >= 500 && !blocks.has(session, peer)) fail(400, 'Your blocked list is full.');
       await blocks.update(session, input.blocked ? userKey(peer) : existing.key, input.blocked ? peer.alias : existing.alias, input.blocked);
-      if (input.blocked) dropPrivateHistories(session, peer);
+      if (input.blocked) { dropPrivateHistories(session, peer); if (!established(peer) && established(session)) antispam.strike(peer.clientKey); }
       publishPrivatePreferences(session); json(privatePreferences(session)); return;
     }
     // Read receipts: the recipient marks everything the peer sent up to a message as seen, and the
@@ -607,8 +613,18 @@ const server = http.createServer(async (req, res) => {
         if (Object.keys(input).some(k => !['id', 'editVersion', 'text'].includes(k))) fail(400, 'Invalid message edit.');
         const text = typeof input.text === 'string' ? input.text.trim() : '';
         if (!text || text.length > 2000) fail(400, 'Use between 1 and 2,000 characters.');
+        const verdict = antispam.review(session, text, { id: message.id, established: established(session) });
+        if (verdict.action === 'reject') fail(403, verdict.message);
         message.text = text; message.mentions = publicMentions(text);
         for (const reply of history) if (reply.reply?.id === message.id) reply.reply.text = text.slice(0, 200);
+        if (verdict.action === 'shadow') {
+          // Everyone else sees the message disappear; its sender keeps seeing the edit.
+          histories.set(conversation, history.filter(m => m !== message));
+          const removed = { id: message.id, room: message.room, sender: message.sender, recipient: null };
+          for (const person of sessions.values()) if (person !== session) emit(person, 'message-removed', removed);
+          message.editVersion = input.editVersion; message.editedAt = new Date().toISOString(); session.sent.push(Date.now());
+          emit(session, 'message-edited', message); publishRooms(); json(message); return;
+        }
       }
       message.editVersion = input.editVersion; message.editedAt = new Date().toISOString();
       session.sent.push(Date.now());
@@ -637,6 +653,12 @@ const server = http.createServer(async (req, res) => {
         }
         const original = input.replyTo == null ? null : history.find(m => m.id === input.replyTo);
         if (input.replyTo != null && !original) fail(400, 'That reply is no longer available in this conversation.');
+        // A muted sender's new conversations reach only themselves.
+        if (!history.length && session.shadowed) {
+          const message = { id: input.id, sender: session.id, alias: session.alias, recipient: peer.id, room: null, time: new Date().toISOString(), displayAsAdmin: false, encrypted: box, reply: null, attachment: null };
+          session.sent.push(Date.now()); emit(session, 'message', message); json(message); return;
+        }
+        if (!history.length) antispam.newConversation(session, established(session));
         const upload = input.attachmentId == null ? null : attachments.get(input.attachmentId, session.id);
         const attachment = upload ? { id: input.attachmentId, expiresAt: upload.createdAt + attachments.ttl } : null;
         const message = { id: input.id, sender: session.id, alias: session.alias, recipient: peer.id, room: null,
@@ -659,9 +681,13 @@ const server = http.createServer(async (req, res) => {
       if (input.replyTo != null && !original) fail(400, 'That reply is no longer available in this conversation.');
       const mentions = publicMentions(text);
       session.sent.push(Date.now());
-      const message = { id: randomUUID(), sender: session.id, alias: session.alias, displayAsAdmin: displaysAsAdmin(session), text, time: new Date().toISOString(), room: peer ? null : input.room, recipient: peer?.id || null, mentions,
+      const id = randomUUID(), trusted = established(session), verdict = antispam.review(session, text, { id, established: trusted });
+      if (verdict.action === 'reject') fail(403, verdict.message);
+      const message = { id, sender: session.id, alias: session.alias, displayAsAdmin: displaysAsAdmin(session), text, time: new Date().toISOString(), room: peer ? null : input.room, recipient: peer?.id || null, mentions,
         reply: original ? { id: original.id, alias: original.alias, text: original.text.slice(0, 200) } : null };
+      if (verdict.action === 'shadow') { emit(session, 'message', message); json(message); return; }
       histories.set(key, [...(histories.get(key) || []), message].slice(-100));
+      for (const person of new Set([original?.sender, ...mentions.map(m => m.id)])) antispam.vouch(session, sessionById(person), trusted);
       if (peer) { emit(session, 'message', message); emit(peer, 'message', message); }
       else { broadcast('message', message); publishRooms(); }
       json(message); return;
@@ -776,6 +802,7 @@ setInterval(() => {
   attachments.sweep();
   groups.sweep();
   security.sweep();
+  antispam.sweep();
 }, 60000).unref();
 server.listen(Number(process.env.PORT || 3000), process.env.HOST || '127.0.0.1', () => {
   console.log(`SilenzaChat is running at ${process.env.ORIGIN || `http://localhost:${process.env.PORT || 3000}`}`);

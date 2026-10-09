@@ -22,6 +22,7 @@ SilenzaChat is a single Node.js process (`server.mjs`) serving a plain HTML/CSS/
 | `lib/blocks.mjs` | Block lists |
 | `lib/announcements.mjs` | Persistent admin announcements |
 | `lib/security.mjs` | Rate limits, trusted-proxy handling, client address hashing |
+| `lib/antispam.mjs` | Spam scoring for main rooms and the new-visitor trust ladder |
 | `public/index.html`, `about.html` | Chat app (`/chat/`) and landing page (`/`) |
 | `public/app.js`, `groups.js`, `auth.js`, `feedback.js`, `theme.js` | Browser UI logic |
 | `public/crypto.js` | Keys, identity verification, authenticated encryption |
@@ -68,6 +69,7 @@ All settings are environment variables (see [`.env.example`](.env.example)).
 | `ATTACHMENT_MAX_MB` | `16` | Largest encrypted attachment (1–64) |
 | `ATTACHMENT_TTL_SECONDS` | `86400` | Attachment lifetime (1–86400) |
 | `ATTACHMENT_STORAGE_MB` | `256` | Total attachment memory |
+| `NEW_VISITOR_PROBATION_SECONDS` | `180` | How long a new visitor is limited after first opening the chat (0–3600) |
 
 ### Persistent data
 
@@ -120,6 +122,8 @@ The landing page is `/`, the chat is `/chat/`, and there is a `/sitemap.xml`. Ca
 | Temporary rooms | 20 members; own 3 / join 20 per visitor; 100 messages, 4 MiB per room / 32 MiB total; deleted after 24 h idle, restart or when empty |
 | Attachments | 16 MB each, 256 MB total, 3× max per session/address, 9× per IPv6 /48; expire within 24 h |
 | Feedback | Title 120 / message 5,000 chars; 3 per session per 10 min; inbox of 1,000 |
+| New visitors | For 3 minutes after first opening the chat (longer on recently flagged networks): no links or contact details in main rooms, and at most 3 new private conversations per 10 min. Ends early when an established person on another network replies to or mentions them. Accounts older than a day skip it. Established visitors may start 20 new private conversations per 10 min |
+| Spam in main rooms | Messages are scored for disguised text (look-alike letters, leetspeak, hidden characters, spaced-out letters), links and contact details in disguised forms, links split across messages, and near-identical messages from several people. High scores are muted silently: the sender still sees them, nobody else does. Mutes last for the session and flag its network for an hour. Muted senders' new private conversations reach only themselves. Temporary rooms are not scored |
 
 These are basic in-app protections. Larger public deployments still need host-level abuse/DDoS protection and load testing.
 
